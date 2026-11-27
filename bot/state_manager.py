@@ -1,12 +1,57 @@
 import json
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from config import MANGROVE_ZONES, ALERT_CATEGORIES
+from config import MANGROVE_ZONES, ALERT_CATEGORIES, RESEND_API_KEY, RESEND_FROM_EMAIL
 
 REPORTS_FILE = os.path.join(os.path.dirname(__file__), "reports_db.json")
+SUBSCRIBERS_FILE = os.path.join(os.path.dirname(__file__), "subscribers_db.json")
+SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings_db.json")
+
+DEFAULT_SUBSCRIBERS = [
+    {
+        "id": "sub_cra_control",
+        "name": "Centro de Control y Despacho C.R.A.",
+        "email": "alertas.manglar@crautonoma.gov.co",
+        "organization": "C.R.A. - Corporación Autónoma Regional del Atlántico",
+        "type": "CRA",
+        "plan": "INSTITUCIONAL",
+        "zones": ["*"],
+        "categories": ["*"],
+        "min_severity": "BAJA",
+        "active": True,
+        "created_at": "2026-11-27T12:00:00Z",
+    },
+    {
+        "id": "sub_academia_uninorte",
+        "name": "Grupo de Investigación en Ecosistemas Costeros",
+        "email": "investigacion.manglares@uninorte.edu.co",
+        "organization": "Universidad / Academia Caribe",
+        "type": "ACADEMIA",
+        "plan": "PRO_DATA_B2B",
+        "zones": ["*"],
+        "categories": ["alert_olor", "alert_color", "alert_fauna"],
+        "min_severity": "MEDIA",
+        "active": True,
+        "created_at": "2026-11-27T12:00:00Z",
+    },
+    {
+        "id": "sub_empresa_esg",
+        "name": "Dirección de Sostenibilidad y Carbono Azul",
+        "email": "esg.ambiental@empresa-aliada.com",
+        "organization": "Consorcio Empresarial ESG & Carbono Azul",
+        "type": "EMPRESA",
+        "plan": "ENTERPRISE_B2B",
+        "zones": ["zone_mallorquin", "zone_balboa"],
+        "categories": ["*"],
+        "min_severity": "ALTA",
+        "active": True,
+        "created_at": "2026-11-27T12:00:00Z",
+    },
+]
 
 
 class ConversationStep:
@@ -19,18 +64,35 @@ class ConversationStep:
 
 class StateManager:
     """
-    Mantiene el estado de la conversación de cada ciudadano en WhatsApp
-    y persiste los reportes validados en reports_db.json para que el Panel Web de la C.R.A. los consuma en tiempo real.
+    Mantiene:
+    1. El estado de conversación de cada ciudadano en WhatsApp.
+    2. La base de datos de reportes verificados (`reports_db.json`) con actualizaciones en vivo.
+    3. Los responsables de la C.R.A. y clientes B2B (Empresas/Academia) suscritos por correo (`subscribers_db.json`).
+    4. La configuración SMTP editable desde el Frontend Administrativo (`settings_db.json`).
     """
 
     def __init__(self) -> None:
         self.sessions: Dict[str, Dict[str, Any]] = {}
-        self._ensure_db()
+        self._ensure_dbs()
 
-    def _ensure_db(self) -> None:
+    def _ensure_dbs(self) -> None:
         if not os.path.exists(REPORTS_FILE):
             with open(REPORTS_FILE, "w", encoding="utf-8") as f:
                 json.dump([], f, ensure_ascii=False, indent=2)
+
+        if not os.path.exists(SUBSCRIBERS_FILE):
+            with open(SUBSCRIBERS_FILE, "w", encoding="utf-8") as f:
+                json.dump(DEFAULT_SUBSCRIBERS, f, ensure_ascii=False, indent=2)
+
+        if not os.path.exists(SETTINGS_FILE):
+            default_settings = {
+                "resend_api_key": RESEND_API_KEY,
+                "from_email": RESEND_FROM_EMAIL,
+                "auto_notify_email": True,
+                "notify_whatsapp_on_status_change": True,
+            }
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(default_settings, f, ensure_ascii=False, indent=2)
 
     def get_session(self, conversation_id: str) -> Dict[str, Any]:
         if conversation_id not in self.sessions:
@@ -56,26 +118,19 @@ class StateManager:
 
     @staticmethod
     def detect_zone_from_text(text: str) -> Optional[Dict[str, Any]]:
-        """
-        Detecta si el texto inicial (ej. proveniente del QR/NFC del Tótem) ya menciona el manglar,
-        o si el usuario seleccionó un ID de la lista interactiva (`zone_mallorquin`, etc.) o un número del 1 al 5.
-        """
         if not text:
             return None
         clean = text.strip().lower()
 
-        # 1. Por ID exacto de la lista interactiva
         for zone in MANGROVE_ZONES:
             if clean == zone["id"].lower() or clean == zone["title"].lower():
                 return zone
 
-        # 2. Por palabras clave (ideal para el link wa.me del Tótem QR/NFC)
         for zone in MANGROVE_ZONES:
             for kw in zone["keywords"]:
                 if kw in clean:
                     return zone
 
-        # 3. Fallback si respondió con número 1..5
         if clean.isdigit():
             idx = int(clean) - 1
             if 0 <= idx < len(MANGROVE_ZONES):
@@ -85,7 +140,6 @@ class StateManager:
 
     @staticmethod
     def detect_category_from_text(text: str) -> Optional[Dict[str, Any]]:
-        """Detecta la categoría de alerta desde el clic en la lista interactiva (`alert_tala`, etc.) o por texto/número."""
         if not text:
             return None
         clean = text.strip().lower()
@@ -108,18 +162,24 @@ class StateManager:
         sender_name: str,
         session: Dict[str, Any],
         ai_report: Dict[str, Any],
+        source: str = "WHATSAPP_TOTEM",
     ) -> Dict[str, Any]:
-        """Guarda el reporte verificado junto con el Pequeño Informe Técnico de la C.R.A. y genera un código de radicado."""
+        """Guarda un nuevo reporte validado por IA con su Informe Técnico C.R.A. y metadatos B2B."""
         reports = self.list_reports()
         seq = len(reports) + 1
         report_id = f"MKN-2026-{seq:04d}"
+        now_iso = datetime.now(timezone.utc).isoformat()
 
         coords = session.get("gps") or session.get("zone_coords") or {"lat": 11.0458, "lng": -74.8461}
 
         record = {
             "id": report_id,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": now_iso,
+            "updated_at": now_iso,
+            "source": source,
             "status": "PENDIENTE_REVISION_CRA",
+            "assigned_to": ai_report.get("dependencia_responsable_cra", "Subdirección de Gestión Ambiental C.R.A."),
+            "cra_notes": [],
             "conversation_id": conversation_id,
             "citizen": {
                 "phone": sender_phone,
@@ -140,39 +200,169 @@ class StateManager:
             },
             "cra_technical_report": {
                 "es_valida": ai_report.get("es_valida", True),
-                "nivel_severidad": ai_report.get("nivel_severidad", "MEDIA"),
+                "puntaje_confianza_ia": ai_report.get("puntaje_confianza_ia", 90),
+                "nivel_severidad": ai_report.get("nivel_severidad", "ALTA"),
+                "indice_riesgo_ambiental": ai_report.get("indice_riesgo_ambiental", 78),
+                "subcategoria_tecnica_cra": ai_report.get("subcategoria_tecnica_cra"),
+                "dependencia_responsable_cra": ai_report.get("dependencia_responsable_cra"),
+                "sla_tiempo_respuesta_horas": ai_report.get("sla_tiempo_respuesta_horas", 6),
                 "titulo_hallazgo": ai_report.get("titulo_hallazgo"),
                 "coherencia_foto_descripcion": ai_report.get("coherencia_foto_descripcion"),
                 "hallazgo_visual": ai_report.get("hallazgo_visual"),
+                "especies_mangle_riesgo": ai_report.get("especies_mangle_riesgo", []),
+                "parametros_fisicoquimicos_alterados": ai_report.get("parametros_fisicoquimicos_alterados", []),
                 "hipotesis_ambiental_quimica": ai_report.get("hipotesis_ambiental_quimica"),
+                "normativa_aplicable": ai_report.get("normativa_aplicable"),
                 "accion_recomendada_cra": ai_report.get("accion_recomendada_cra"),
+                "valor_analitico_b2b_academia": ai_report.get("valor_analitico_b2b_academia"),
+                "etiquetas_datos": ai_report.get("etiquetas_datos", []),
             },
+            "email_notifications": [],
         }
 
         reports.insert(0, record)
-        with open(REPORTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(reports, f, ensure_ascii=False, indent=2)
-
+        self._write_reports(reports)
         session["last_report_id"] = report_id
         return record
 
-    def update_report_gps(self, report_id: str, lat: float, lng: float) -> bool:
-        """Actualiza un reporte recién creado si el usuario decide enviar su pin GPS opcional."""
+    def attach_email_logs(self, report_id: str, email_logs: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        reports = self.list_reports()
+        for r in reports:
+            if r["id"] == report_id:
+                r["email_notifications"] = email_logs
+                r["updated_at"] = datetime.now(timezone.utc).isoformat()
+                self._write_reports(reports)
+                return r
+        return None
+
+    def get_report_by_id(self, report_id: str) -> Optional[Dict[str, Any]]:
+        for r in self.list_reports():
+            if r["id"].lower() == report_id.lower():
+                return r
+        return None
+
+    def update_report(self, report_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Permite al Panel de Administración actualizar el estado, responsable, severidad o agregar notas de gestión."""
+        reports = self.list_reports()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for r in reports:
+            if r["id"].lower() == report_id.lower():
+                if "status" in updates and updates["status"]:
+                    r["status"] = updates["status"]
+                if "assigned_to" in updates and updates["assigned_to"]:
+                    r["assigned_to"] = updates["assigned_to"]
+                if "nivel_severidad" in updates and updates["nivel_severidad"]:
+                    r["cra_technical_report"]["nivel_severidad"] = updates["nivel_severidad"]
+                if "note" in updates and updates["note"]:
+                    r.setdefault("cra_notes", []).append(
+                        {
+                            "note": updates["note"],
+                            "author": updates.get("author", "Funcionario C.R.A."),
+                            "timestamp": now_iso,
+                        }
+                    )
+                r["updated_at"] = now_iso
+                self._write_reports(reports)
+                return r
+        return None
+
+    def update_report_gps(self, report_id: str, lat: float, lng: float) -> Optional[Dict[str, Any]]:
         reports = self.list_reports()
         for r in reports:
             if r["id"] == report_id:
                 r["location"]["lat"] = lat
                 r["location"]["lng"] = lng
                 r["location"]["has_exact_gps"] = True
-                with open(REPORTS_FILE, "w", encoding="utf-8") as f:
-                    json.dump(reports, f, ensure_ascii=False, indent=2)
-                return True
-        return False
+                r["updated_at"] = datetime.now(timezone.utc).isoformat()
+                self._write_reports(reports)
+                return r
+        return None
 
     def list_reports(self) -> List[Dict[str, Any]]:
-        self._ensure_db()
+        self._ensure_dbs()
         try:
             with open(REPORTS_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             return []
+
+    def _write_reports(self, reports: List[Dict[str, Any]]) -> None:
+        with open(REPORTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(reports, f, ensure_ascii=False, indent=2)
+
+    # =========================================================================
+    # Gestión de Responsables C.R.A. y Suscriptores B2B (Empresas / Academia)
+    # =========================================================================
+    def list_subscribers(self) -> List[Dict[str, Any]]:
+        self._ensure_dbs()
+        try:
+            with open(SUBSCRIBERS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    def add_subscriber(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        subs = self.list_subscribers()
+        new_sub = {
+            "id": data.get("id") or f"sub_{uuid.uuid4().hex[:8]}",
+            "name": data.get("name", "Contacto"),
+            "email": data["email"],
+            "organization": data.get("organization", "Entidad Suscriptora"),
+            "type": (data.get("type") or "EMPRESA").upper(),  # CRA | EMPRESA | ACADEMIA
+            "plan": data.get("plan", "PRO_DATA_B2B"),
+            "zones": data.get("zones") or ["*"],
+            "categories": data.get("categories") or ["*"],
+            "min_severity": (data.get("min_severity") or "BAJA").upper(),
+            "active": data.get("active", True),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        subs.append(new_sub)
+        with open(SUBSCRIBERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(subs, f, ensure_ascii=False, indent=2)
+        return new_sub
+
+    def update_subscriber(self, sub_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        subs = self.list_subscribers()
+        for s in subs:
+            if s["id"] == sub_id:
+                for k in ("name", "email", "organization", "type", "plan", "zones", "categories", "min_severity", "active"):
+                    if k in updates and updates[k] is not None:
+                        s[k] = updates[k]
+                with open(SUBSCRIBERS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(subs, f, ensure_ascii=False, indent=2)
+                return s
+        return None
+
+    def delete_subscriber(self, sub_id: str) -> bool:
+        subs = self.list_subscribers()
+        filtered = [s for s in subs if s["id"] != sub_id]
+        if len(filtered) == len(subs):
+            return False
+        with open(SUBSCRIBERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(filtered, f, ensure_ascii=False, indent=2)
+        return True
+
+    # =========================================================================
+    # Configuración SMTP y Notificaciones (Desde el Frontend)
+    # =========================================================================
+    def get_settings(self) -> Dict[str, Any]:
+        self._ensure_dbs()
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def update_settings(self, updates: Dict[str, Any]) -> Dict[str, Any]:
+        current = self.get_settings()
+        for k in (
+            "resend_api_key",
+            "from_email",
+            "auto_notify_email",
+            "notify_whatsapp_on_status_change",
+        ):
+            if k in updates and updates[k] is not None:
+                current[k] = updates[k]
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(current, f, ensure_ascii=False, indent=2)
+        return current

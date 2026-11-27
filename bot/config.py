@@ -12,6 +12,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 PORT = int(os.getenv("PORT", "8089"))
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://mokana.joshual.tech").rstrip("/")
+
+# Configuración Resend para notificaciones por correo (configurable desde .env o desde el Frontend vía API)
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "Mokaná Alertas C.R.A. <alertas@joshual.tech>")
 
 # Zonas de Manglar del Departamento del Atlántico
 MANGROVE_ZONES = [

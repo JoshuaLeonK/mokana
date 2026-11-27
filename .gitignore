@@ -19,6 +19,10 @@ env/
 # Base de datos local de reportes generados en ejecución
 reports_db.json
 **/reports_db.json
+subscribers_db.json
+**/subscribers_db.json
+settings_db.json
+**/settings_db.json
 
 # Build y salidas
 .next/
