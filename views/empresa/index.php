@@ -1,6 +1,5 @@
 <?php
-// Pantalla Empresa (Suscriptor Plan Pro) — Mokana
-// Protegida por sesión PHP desde public/index.php
+// Pantalla Empresa (Suscriptor Plan Pro: Ciénaga de Mallorquín y Puerto Colombia · Con Bonos) — Mokana
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -8,11 +7,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Panel Empresa: Mokana</title>
-  <meta name="description" content="Panel empresarial multitenant de Mokana para monitoreo de alertas de manglares en zonas contratadas y trazabilidad ESG." />
+  <meta name="description" content="Panel empresarial de Mokana para monitoreo de alertas en Ciénaga de Mallorquín y Puerto Colombia." />
   <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geologica:wght,CRSV,SHRP@200..500,0,0..100&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/assets/css/tokens.css" />
   <link rel="stylesheet" href="/assets/css/base.css" />
   <link rel="stylesheet" href="/assets/css/panel.css" />
@@ -34,14 +34,6 @@
             <rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" />
           </svg>
           <span>Dashboard</span>
-        </button>
-
-        <button type="button" class="nav-item" data-view="mapa">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
-            <line x1="9" y1="3" x2="9" y2="18" /><line x1="15" y1="6" x2="15" y2="21" />
-          </svg>
-          <span>Mapa en vivo</span>
         </button>
 
         <button type="button" class="nav-item" data-view="alertas">
@@ -82,11 +74,12 @@
           <span class="user-name">Puerto Verde Logística</span>
           <span class="user-role">operaciones@puertoverde.com</span>
         </div>
-        <a class="btn-line btn-icon" href="/auth/logout.php" aria-label="Cerrar sesión" title="Cerrar sesión">
+        <a class="btn-line logout-btn" href="/auth/logout.php">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
             <polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
           </svg>
+          <span>Cerrar sesión</span>
         </a>
       </div>
     </aside>
@@ -114,102 +107,104 @@
         </div>
       </header>
 
-      <main id="main-content" class="content" data-fullbleed="false">
-        <!-- DASHBOARD OPCIÓN 2 (EMPRESA) -->
+      <main class="content">
+        <!-- DASHBOARD EMPRESA (RESTRINGIDO A MALLORQUÍN Y PUERTO COLOMBIA + BONOS) -->
         <section id="view-dashboard" class="view-panel" data-active="true" aria-labelledby="dash-heading">
-          <div class="hero-band">
-            <article class="ticks hero-status-card">
-              <div>
-                <h1 id="dash-heading" class="page-title">Monitoreo empresarial de manglares</h1>
-                <p class="page-subtitle">Alertas verificadas en tiempo real para Ciénaga de Mallorquín y Puerto Velero.</p>
-              </div>
-              <div class="hero-figures">
-                <div class="hero-metric">
-                  <span class="metric-label">Alertas en tus zonas</span>
-                  <div id="dash-active-count" class="metric-value num">0<span class="u">activas</span></div>
+          <div class="dash-top-grid">
+            <div class="dash-left-stack">
+              <article class="ticks ticks--compact eco-compact">
+                <div class="panel-head" style="margin-bottom: 0">
+                  <h1 id="dash-heading" class="panel-title">Estado del ecosistema contratado</h1>
+                  <span id="dash-eco-badge" class="badge badge--BAJA">Estable</span>
                 </div>
-                <div class="hero-metric">
-                  <span class="metric-label">Índice máximo ambiental</span>
-                  <div id="dash-max-risk" class="metric-value metric-value--critical num">0<span class="u">/100</span></div>
-                </div>
-              </div>
-              <p id="bot-api-status" class="ruled-desc">Bot IA: Conectando a mokana.joshual.tech</p>
-              <div class="toolbar-row">
-                <button type="button" class="btn-pill" data-jump-view="alertas">Ir a Gestión de Alertas</button>
-                <button type="button" class="btn-line" data-jump-view="mapa">Abrir Mapa en vivo</button>
-              </div>
-            </article>
 
-            <article class="ticks">
-              <div class="panel-head">
-                <h2 class="panel-title">Mapa de zonas contratadas</h2>
+                <div class="hero-figures">
+                  <div class="hero-metric">
+                    <span class="metric-label">Alertas activas</span>
+                    <div id="dash-active-count" class="metric-value metric-value--sm num">0<span class="u">activas</span></div>
+                  </div>
+                  <div class="hero-metric">
+                    <span class="metric-label">Riesgo general promediado</span>
+                    <div id="dash-avg-risk" class="metric-value metric-value--sm metric-value--critical num">0<span class="u">/100</span></div>
+                  </div>
+                </div>
+
                 <div class="toolbar-row">
-                  <button id="zoom-out" type="button" class="btn-line btn-icon" aria-label="Alejar">-</button>
-                  <button id="zoom-reset" type="button" class="btn-line">100%</button>
-                  <button id="zoom-in" type="button" class="btn-line btn-icon" aria-label="Acercar">+</button>
-                  <button id="btn-maximize-map" type="button" class="btn-line">Maximizar</button>
+                  <button type="button" class="btn-pill" data-jump-view="alertas">Ir a Gestión de Alertas</button>
                 </div>
-              </div>
-              <div id="dash-map-viewport" class="map-viewport" role="region" aria-label="Mapa de zonas contratadas">
-                <div id="dash-map-stage" class="map-stage" data-dragging="false">
-                  <img class="map-base" src="/assets/img/map/relieve.jpg" alt="Relieve costero del Atlántico" width="691" height="641" draggable="false" />
-                  <img class="map-overlay" src="/assets/img/map/plan.png" alt="" width="691" height="641" draggable="false" />
-                  <div id="dash-map-pins" class="map-pins"></div>
+              </article>
+
+              <!-- Subecosistemas pagados en cuadritos 2x2 debajo de Estado del ecosistema -->
+              <div id="subecosystems-list" class="subeco-list"></div>
+
+              <article class="ticks ticks--compact stack-card">
+                <div class="stack-copy">
+                  <h2 class="ruled-title">Bonos de carbono</h2>
+                  <span class="ruled-desc">Cobertura Plan Pro verificada</span>
                 </div>
-              </div>
-              <div class="map-legend">
-                <span class="legend-item"><span class="legend-swatch swatch--preservacion"></span>Preservación</span>
-                <span class="legend-item"><span class="legend-swatch swatch--restauracion"></span>Restauración</span>
-                <span class="legend-item"><span class="legend-swatch swatch--recuperacion"></span>Recuperación</span>
-                <span class="legend-item"><span class="legend-swatch swatch--rehabilitacion"></span>Rehabilitación</span>
-                <span class="legend-item"><span class="legend-swatch swatch--manglar"></span>Manglar probable</span>
-              </div>
-            </article>
-          </div>
-
-          <div class="lower-band">
-            <article class="ticks band-card">
-              <h2 class="panel-title">Zonas contratadas</h2>
-              <hr class="band-divider" />
-              <div class="metric-value num">2<span class="u">sectores</span></div>
-              <span class="ruled-desc">Ciénaga de Mallorquín y Puerto Velero / Balboa</span>
-            </article>
-
-            <article class="ticks band-card">
-              <h2 class="panel-title">Bonos de carbono ESG</h2>
-              <hr class="band-divider" />
-              <div class="metric-value num">1,280<span class="u">tCO₂</span></div>
-              <span class="ruled-desc">Cobertura Plan Pro verificada</span>
-            </article>
-
-            <article class="ticks band-card">
-              <h2 class="panel-title">Última alerta IA</h2>
-              <hr class="band-divider" />
-              <div id="dash-last-ai" class="metric-value num">En espera</div>
-              <span id="dash-last-ai-sub" class="ruled-desc">Solo alertas Alta y Crítica de tus zonas</span>
-            </article>
-          </div>
-        </section>
-
-        <!-- MAPA EN VIVO 100% PURO -->
-        <section id="view-mapa" class="view-panel view-panel--map-only" data-active="false" aria-label="Mapa en vivo">
-          <div id="pure-map-viewport" class="map-viewport map-viewport--pure">
-            <div id="pure-map-stage" class="map-stage" data-dragging="false">
-              <img class="map-base" src="/assets/img/map/relieve.jpg" alt="Mapa completo del Atlántico" width="691" height="641" draggable="false" />
-              <img class="map-overlay" src="/assets/img/map/plan.png" alt="" width="691" height="641" draggable="false" />
-              <div id="pure-map-pins" class="map-pins"></div>
+                <div class="metric-value metric-value--sm num">1,280<span class="u">tCO₂</span></div>
+              </article>
             </div>
+
+            <article class="ticks dash-map-card">
+              <div class="panel-head">
+                <h2 class="panel-title">Mapa de zonas de calor contratadas</h2>
+                <button id="btn-open-map-modal" type="button" class="btn-line">Ampliar mapa</button>
+              </div>
+              <div
+                id="dash-map-viewport"
+                class="map-viewport map-viewport--clickable"
+                role="button"
+                tabindex="0"
+                aria-label="Abrir modal completo del mapa de zonas contratadas"
+              ></div>
+              <div class="map-legend">
+                <span class="legend-item"><span class="legend-swatch swatch--kmz"></span>Prioridades KMZ</span>
+                <span class="legend-item"><span class="legend-swatch swatch--heat-low"></span>Baja densidad</span>
+                <span class="legend-item"><span class="legend-swatch swatch--heat-mid"></span>Media densidad</span>
+                <span class="legend-item"><span class="legend-swatch swatch--heat-high"></span>Alta densidad</span>
+              </div>
+            </article>
           </div>
+
+          <!-- Últimas 10 alertas -->
+          <article class="ticks">
+            <div class="panel-head">
+              <h2 class="panel-title">Últimas 10 alertas</h2>
+              <button type="button" class="btn-line" data-jump-view="alertas">Ver todas</button>
+            </div>
+
+            <div id="dash-alerts-empty" class="empty-box">
+              <strong>Sin alertas en tus sectores contratados.</strong>
+              <span class="ruled-desc">Las alertas de Ciénaga de Mallorquín y Puerto Colombia aparecerán aquí en vivo.</span>
+            </div>
+
+            <div id="dash-alerts-table-wrap" class="table-scroll" style="display: none">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Radicado</th>
+                    <th scope="col">Zona</th>
+                    <th scope="col">Anomalía</th>
+                    <th scope="col">Prioridad</th>
+                    <th scope="col">Informe</th>
+                    <th scope="col">Detalle</th>
+                  </tr>
+                </thead>
+                <tbody id="dash-alerts-tbody"></tbody>
+              </table>
+            </div>
+          </article>
         </section>
 
-        <!-- GESTIÓN DE ALERTAS OPCIÓN 3 (EMPRESA) -->
+        <!-- GESTIÓN DE ALERTAS EMPRESA (FILTROS + PAGINADO EXCLUSIVO) -->
         <section id="view-alertas" class="view-panel" data-active="false" aria-labelledby="alertas-heading">
           <div class="page-head">
             <div>
               <h1 id="alertas-heading" class="page-title">Gestión de Alertas</h1>
-              <p class="page-subtitle">Alertas Alta y Crítica verificadas por IA en tus sectores contratados.</p>
+              <p class="page-subtitle">Alertas activas en Ciénaga de Mallorquín y Puerto Colombia.</p>
             </div>
-            <button id="btn-refresh-api" type="button" class="btn-line">Actualizar desde API</button>
+            <button id="btn-refresh-api" type="button" class="btn-line">Actualizar</button>
           </div>
 
           <div class="escalation-grid" role="group" aria-label="Criterio de escalamiento">
@@ -226,42 +221,51 @@
             <button type="button" class="esc-card esc-card--moderate" data-sev="MEDIA" aria-pressed="false">
               <span class="esc-title">Media</span>
               <span id="esc-cnt-media" class="esc-count">0</span>
-              <span class="esc-rule">Disponible en Enterprise</span>
+              <span class="esc-rule">Seguimiento continuo</span>
             </button>
             <button type="button" class="esc-card esc-card--low" data-sev="BAJA" aria-pressed="false">
               <span class="esc-title">Baja</span>
               <span id="esc-cnt-baja" class="esc-count">0</span>
-              <span class="esc-rule">Disponible en Enterprise</span>
+              <span class="esc-rule">Preventivo ESG</span>
             </button>
           </div>
 
           <article class="ticks">
-            <div class="panel-head">
-              <h2 class="panel-title">Registro de alertas activas (Plan Pro)</h2>
+            <div class="alerts-filter-bar">
+              <div class="toolbar-row" role="group" aria-label="Filtrar alertas por prioridad">
+                <button type="button" class="btn-line sev-filter-btn" data-sev-filter="" aria-pressed="true">Todas</button>
+                <button type="button" class="btn-line sev-filter-btn" data-sev-filter="CRÍTICA" aria-pressed="false">Críticas</button>
+                <button type="button" class="btn-line sev-filter-btn" data-sev-filter="ALTA" aria-pressed="false">Altas</button>
+                <button type="button" class="btn-line sev-filter-btn" data-sev-filter="MEDIA" aria-pressed="false">Medias</button>
+                <button type="button" class="btn-line sev-filter-btn" data-sev-filter="BAJA" aria-pressed="false">Bajas</button>
+              </div>
               <span id="alerts-count-label" class="ruled-desc num">0 registros</span>
             </div>
 
             <div id="alerts-empty" class="empty-box">
-              <strong>Sin alertas activas en tus zonas contratadas.</strong>
-              <span class="ruled-desc">Las alertas Alta y Crítica de Ciénaga de Mallorquín y Puerto Velero aparecerán aquí en vivo al ser verificadas por el Bot Agente IA.</span>
+              <strong>Sin alertas para el filtro actual.</strong>
+              <span class="ruled-desc">Solo se muestran alertas de Ciénaga de Mallorquín y Puerto Colombia.</span>
             </div>
 
             <div id="alerts-table-wrap" class="table-scroll" style="display: none">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th scope="col">ID</th>
-                    <th scope="col">Sector</th>
-                    <th scope="col">Hallazgo</th>
-                    <th scope="col">Severidad</th>
-                    <th scope="col">Riesgo</th>
-                    <th scope="col">Evaluación Bot IA</th>
-                    <th scope="col">Estado</th>
+                    <th scope="col">Radicado</th>
+                    <th scope="col">Zona</th>
+                    <th scope="col">Anomalía</th>
+                    <th scope="col">Prioridad</th>
+                    <th scope="col">Informe</th>
                     <th scope="col">Detalle</th>
                   </tr>
                 </thead>
                 <tbody id="alerts-tbody"></tbody>
               </table>
+            </div>
+
+            <div id="alerts-pagination" class="pagination-bar" style="display: none">
+              <span id="pagination-info" class="ruled-desc num"></span>
+              <div id="pagination-controls" class="pagination-controls"></div>
             </div>
           </article>
         </section>
@@ -271,18 +275,18 @@
           <div class="page-head">
             <div>
               <h1 id="sub-heading" class="page-title">Mi suscripción</h1>
-              <p class="page-subtitle">Alcance activo para Puerto Verde Logística.</p>
+              <p class="page-subtitle">Cobertura contratada para Puerto Verde Logística.</p>
             </div>
           </div>
           <article class="ticks">
             <div class="ruled-list">
               <div class="ruled-row">
-                <span class="ruled-copy"><span class="ruled-title">Plan contratado</span><span class="ruled-desc">Monitoreo en vivo de alertas Alta y Crítica</span></span>
+                <span class="ruled-copy"><span class="ruled-title">Plan contratado</span><span class="ruled-desc">Monitoreo en vivo de alertas</span></span>
                 <span class="badge badge--BAJA">Plan Pro activo</span>
               </div>
               <div class="ruled-row">
-                <span class="ruled-copy"><span class="ruled-title">Zonas asignadas</span><span class="ruled-desc">Aislamiento multitenant por contrato</span></span>
-                <span class="num">Ciénaga de Mallorquín, Puerto Velero</span>
+                <span class="ruled-copy"><span class="ruled-title">Sectores pagados</span><span class="ruled-desc">Aislamiento multitenant por contrato</span></span>
+                <span class="num">Ciénaga de Mallorquín y Puerto Colombia</span>
               </div>
             </div>
           </article>
@@ -293,14 +297,14 @@
           <div class="page-head">
             <div>
               <h1 id="bonos-heading" class="page-title">Bonos de carbono ESG</h1>
-              <p class="page-subtitle">Trazabilidad de biomasa y carbono azul en tus sectores.</p>
+              <p class="page-subtitle">Trazabilidad de biomasa en Ciénaga de Mallorquín y Puerto Colombia.</p>
             </div>
           </div>
           <article class="ticks band-card">
             <h2 class="panel-title">Stock monitoreado</h2>
             <hr class="band-divider" />
             <div class="metric-value num">1,280<span class="u">tCO₂</span></div>
-            <span class="ruled-desc">Respaldo técnico conectado a los informes de la API Mokaná</span>
+            <span class="ruled-desc">Respaldo técnico para reportes ESG</span>
           </article>
         </section>
 
@@ -309,7 +313,7 @@
           <div class="page-head">
             <div>
               <h1 id="export-heading" class="page-title">Exportar informes</h1>
-              <p class="page-subtitle">Descarga datos filtrados exclusivamente a tus zonas contratadas.</p>
+              <p class="page-subtitle">Descarga datos filtrados exclusivamente a Ciénaga de Mallorquín y Puerto Colombia.</p>
             </div>
           </div>
           <article class="ticks">
@@ -317,7 +321,7 @@
               <div class="export-option">
                 <div class="ruled-copy">
                   <strong class="ruled-title">Tabla analítica CSV</strong>
-                  <span class="ruled-desc">Alertas Alta y Crítica de tus sectores.</span>
+                  <span class="ruled-desc">Alertas de tus sectores contratados.</span>
                 </div>
                 <button id="exp-csv" type="button" class="btn-pill">Descargar CSV</button>
               </div>
@@ -330,10 +334,13 @@
               </div>
               <div class="export-option">
                 <div class="ruled-copy">
-                  <strong class="ruled-title">Informe ejecutivo PDF</strong>
-                  <span class="ruled-desc">Imprime o guarda tu reporte corporativo en PDF.</span>
+                  <strong class="ruled-title">Dataset JSON / PDF</strong>
+                  <span class="ruled-desc">Dataset abierto JSON o impresión ejecutiva en PDF.</span>
                 </div>
-                <button id="exp-pdf" type="button" class="btn-line">Imprimir PDF</button>
+                <div class="toolbar-row">
+                  <button id="exp-json" type="button" class="btn-line">JSON</button>
+                  <button id="exp-pdf" type="button" class="btn-line">PDF</button>
+                </div>
               </div>
             </div>
           </article>
@@ -342,49 +349,100 @@
     </div>
   </div>
 
-  <!-- Diálogo Maximizar Mapa -->
+  <!-- MODAL COMPLETO DEL MAPA EMPRESA -->
   <dialog id="map-dialog" class="native-dialog" aria-labelledby="dialog-map-title">
     <header class="dialog-header">
-      <h2 id="dialog-map-title" class="panel-title">Mapa de zonas contratadas</h2>
-      <div class="toolbar-row">
-        <button id="dialog-zoom-out" type="button" class="btn-line btn-icon" aria-label="Alejar">-</button>
-        <button id="dialog-zoom-reset" type="button" class="btn-line">100%</button>
-        <button id="dialog-zoom-in" type="button" class="btn-line btn-icon" aria-label="Acercar">+</button>
-        <button id="btn-minimize-map" type="button" class="btn-pill">Minimizar</button>
+      <h2 id="dialog-map-title" class="panel-title">Mapa de zonas de calor contratadas</h2>
+      <div class="map-filter-bar">
+        <select id="map-filter-sev" class="filter-select" aria-label="Filtrar por prioridad">
+          <option value="">Todas las prioridades</option>
+          <option value="CRÍTICA">Crítica</option>
+          <option value="ALTA">Alta</option>
+          <option value="MEDIA">Media</option>
+          <option value="BAJA">Baja</option>
+        </select>
+        <select id="map-filter-zone" class="filter-select" aria-label="Filtrar por zona">
+          <option value="">Mis zonas pagadas</option>
+          <option value="zone_mallorquin">Ciénaga de Mallorquín</option>
+          <option value="zone_balboa">Puerto Colombia</option>
+        </select>
+        <button id="btn-toggle-kmz" type="button" class="btn-line" aria-pressed="true">Capa KMZ</button>
+        <button id="btn-minimize-map" type="button" class="btn-pill">Cerrar</button>
       </div>
     </header>
-    <div class="dialog-map-body">
-      <div id="dialog-map-viewport" class="map-viewport map-viewport--full">
-        <div id="dialog-map-stage" class="map-stage" data-dragging="false">
-          <img class="map-base" src="/assets/img/map/relieve.jpg" alt="Relieve del Atlántico" width="691" height="641" draggable="false" />
-          <img class="map-overlay" src="/assets/img/map/plan.png" alt="" width="691" height="641" draggable="false" />
-          <div id="dialog-map-pins" class="map-pins"></div>
+    <div class="map-modal-grid">
+      <div class="map-modal-canvas">
+        <div id="modal-map-viewport" class="map-viewport map-viewport--modal"></div>
+      </div>
+
+      <aside class="map-modal-sidebar">
+        <div>
+          <h3 class="ruled-title" style="margin-bottom: var(--space-xs)">Intensidad de zonas de calor</h3>
+          <div class="map-legend" style="margin-top: 0">
+            <span class="legend-item"><span class="legend-swatch swatch--heat-low"></span>1 alerta</span>
+            <span class="legend-item"><span class="legend-swatch swatch--heat-mid"></span>2–3 alertas</span>
+            <span class="legend-item"><span class="legend-swatch swatch--heat-high"></span>4+ alertas</span>
+            <span class="legend-item"><span class="legend-swatch swatch--kmz"></span>Polígonos KMZ</span>
+          </div>
         </div>
-      </div>
+
+        <div>
+          <h3 class="ruled-title" style="margin-bottom: var(--space-xs)">Prioridad de indicadores</h3>
+          <div class="map-legend" style="margin-top: 0">
+            <span class="legend-item"><span class="legend-swatch swatch--critica"></span>Crítica</span>
+            <span class="legend-item"><span class="legend-swatch swatch--alta"></span>Alta</span>
+            <span class="legend-item"><span class="legend-swatch swatch--media"></span>Media</span>
+            <span class="legend-item"><span class="legend-swatch swatch--baja"></span>Baja</span>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="ruled-title" style="margin-bottom: var(--space-xs)">Lugares con alertas activas</h3>
+          <p class="ruled-desc" style="margin-bottom: var(--space-xs)">Haz clic en una alerta para geolocalizarla en el mapa.</p>
+          <div id="map-modal-alerts-list" class="ruled-list map-alerts-scroll"></div>
+        </div>
+      </aside>
     </div>
-    <footer class="dialog-footer">
-      <div class="map-legend">
-        <span class="legend-item"><span class="legend-swatch swatch--preservacion"></span>Preservación</span>
-        <span class="legend-item"><span class="legend-swatch swatch--restauracion"></span>Restauración</span>
-        <span class="legend-item"><span class="legend-swatch swatch--recuperacion"></span>Recuperación</span>
-        <span class="legend-item"><span class="legend-swatch swatch--rehabilitacion"></span>Rehabilitación</span>
-        <span class="legend-item"><span class="legend-swatch swatch--manglar"></span>Manglar probable</span>
-      </div>
-    </footer>
   </dialog>
 
-  <!-- Diálogo Informe Técnico IA (Solo lectura) -->
+  <!-- MODAL DE DETALLE DE ALERTA -->
   <dialog id="detail-dialog" class="native-dialog native-dialog--detail" aria-labelledby="detail-title">
     <header class="dialog-header">
-      <h2 id="detail-title" class="panel-title">Informe técnico Agente IA</h2>
+      <h2 id="detail-title" class="panel-title">Detalle de alerta</h2>
       <button id="btn-close-detail" type="button" class="btn-line">Cerrar</button>
     </header>
     <div id="detail-body" class="dialog-body"></div>
-    <footer class="dialog-footer">
-      <span class="ruled-desc">Evaluación generada automáticamente por la API del Bot Mokaná.</span>
-    </footer>
   </dialog>
 
+  <!-- MODAL DE DETALLE DE CIÉNAGA / SUBECOSISTEMA -->
+  <dialog id="zone-dialog" class="native-dialog native-dialog--detail" aria-labelledby="zone-dialog-title">
+    <header class="dialog-header">
+      <div>
+        <h2 id="zone-dialog-title" class="panel-title">Detalle de subecosistema</h2>
+        <p id="zone-dialog-desc" class="ruled-desc"></p>
+      </div>
+      <button id="btn-close-zone" type="button" class="btn-line">Cerrar</button>
+    </header>
+    <div id="zone-dialog-body" class="dialog-body"></div>
+  </dialog>
+
+  <!-- LIGHTBOX DE IMAGEN COMPLETA CON ZOOM -->
+  <dialog id="image-lightbox" class="lightbox-dialog" aria-labelledby="lightbox-title">
+    <header class="dialog-header">
+      <h2 id="lightbox-title" class="panel-title">Evidencia fotográfica</h2>
+      <div class="toolbar-row">
+        <button id="lb-zoom-out" type="button" class="btn-line btn-icon" aria-label="Alejar imagen">-</button>
+        <button id="lb-zoom-reset" type="button" class="btn-line">100%</button>
+        <button id="lb-zoom-in" type="button" class="btn-line btn-icon" aria-label="Acercar imagen">+</button>
+        <button id="lb-close" type="button" class="btn-pill">Cerrar</button>
+      </div>
+    </header>
+    <div id="lb-stage" class="lightbox-stage-wrap">
+      <img id="lb-img" class="lightbox-img" src="" alt="Imagen ampliada de alerta" data-dragging="false" draggable="false" />
+    </div>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/assets/js/panel.js" defer></script>
 </body>
 </html>

@@ -1,6 +1,5 @@
 <?php
-// Pantalla C.R.A (Sin cobro · Acceso Total) — Mokana
-// Protegida por sesión PHP desde public/index.php
+// Pantalla C.R.A (Sin cobro · Acceso Total · Sin Bonos de Carbono) — Mokana
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -8,11 +7,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Panel C.R.A: Mokana</title>
-  <meta name="description" content="Panel administrativo C.R.A de Mokana para monitoreo en vivo de alertas de manglares validadas por Agente IA." />
+  <meta name="description" content="Panel administrativo C.R.A de Mokana para monitoreo en vivo de manglares y gestión de alertas." />
   <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Geologica:wght,CRSV,SHRP@200..500,0,0..100&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="/assets/css/tokens.css" />
   <link rel="stylesheet" href="/assets/css/base.css" />
   <link rel="stylesheet" href="/assets/css/panel.css" />
@@ -36,14 +36,6 @@
           <span>Dashboard</span>
         </button>
 
-        <button type="button" class="nav-item" data-view="mapa">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
-            <line x1="9" y1="3" x2="9" y2="18" /><line x1="15" y1="6" x2="15" y2="21" />
-          </svg>
-          <span>Mapa en vivo</span>
-        </button>
-
         <button type="button" class="nav-item" data-view="alertas">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
             <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
@@ -61,14 +53,6 @@
           <span>Tenants y planes</span>
         </button>
 
-        <button type="button" class="nav-item" data-view="bonos">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-            <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
-            <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
-          </svg>
-          <span>Bonos de carbono</span>
-        </button>
-
         <button type="button" class="nav-item" data-view="exportar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -83,11 +67,12 @@
           <span class="user-name">Coordinación C.R.A</span>
           <span class="user-role">admin@cra.gov.co</span>
         </div>
-        <a class="btn-line btn-icon" href="/auth/logout.php" aria-label="Cerrar sesión" title="Cerrar sesión">
+        <a class="btn-line logout-btn" href="/auth/logout.php">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
             <polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
           </svg>
+          <span>Cerrar sesión</span>
         </a>
       </div>
     </aside>
@@ -104,7 +89,7 @@
             <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-            <input id="search-global" type="search" class="search-input" placeholder="Buscar sector o alerta" aria-label="Buscar sector o alerta" />
+            <input id="search-global" type="search" class="search-input" placeholder="Buscar zona, radicado o anomalía" aria-label="Buscar zona, radicado o anomalía" />
           </div>
         </div>
         <div class="topbar-right">
@@ -115,102 +100,98 @@
         </div>
       </header>
 
-      <main id="main-content" class="content" data-fullbleed="false">
-        <!-- VISTA 1: DASHBOARD OPCIÓN 2 (TABLERO EJECUTIVO EN BANDAS) -->
+      <main class="content">
+        <!-- VISTA 1: DASHBOARD C.R.A (SIN BONOS · ECOSISTEMA GENERAL + SUBECOSISTEMAS + MAPA KMZ/CALOR + ÚLTIMAS 10) -->
         <section id="view-dashboard" class="view-panel" data-active="true" aria-labelledby="dash-heading">
-          <div class="hero-band">
-            <article class="ticks hero-status-card">
-              <div>
-                <h1 id="dash-heading" class="page-title">Estado del ecosistema del Atlántico</h1>
-                <p class="page-subtitle">Monitoreo C.R.A conectado en vivo a la API del Bot Agente IA.</p>
-              </div>
-              <div class="hero-figures">
-                <div class="hero-metric">
-                  <span class="metric-label">Alertas activas</span>
-                  <div id="dash-active-count" class="metric-value num">0<span class="u">activas</span></div>
+          <div class="dash-top-grid">
+            <div class="dash-left-stack">
+              <article class="ticks ticks--compact eco-compact">
+                <div class="panel-head" style="margin-bottom: 0">
+                  <h1 id="dash-heading" class="panel-title">Estado del ecosistema (Atlántico)</h1>
+                  <span id="dash-eco-badge" class="badge badge--BAJA">Estable</span>
                 </div>
-                <div class="hero-metric">
-                  <span class="metric-label">Índice máximo ambiental</span>
-                  <div id="dash-max-risk" class="metric-value metric-value--critical num">0<span class="u">/100</span></div>
-                </div>
-              </div>
-              <p id="bot-api-status" class="ruled-desc">Bot IA: Conectando a mokana.joshual.tech</p>
-              <div class="toolbar-row">
-                <button type="button" class="btn-pill" data-jump-view="alertas">Ir a Gestión de Alertas</button>
-                <button type="button" class="btn-line" data-jump-view="mapa">Abrir Mapa en vivo</button>
-              </div>
-            </article>
 
-            <article class="ticks">
-              <div class="panel-head">
-                <h2 class="panel-title">Mapa georreferenciado C.R.A</h2>
+                <!-- Subsección General -->
+                <div class="hero-figures">
+                  <div class="hero-metric">
+                    <span class="metric-label">Alertas activas</span>
+                    <div id="dash-active-count" class="metric-value metric-value--sm num">0<span class="u">activas</span></div>
+                  </div>
+                  <div class="hero-metric">
+                    <span class="metric-label">Riesgo general promediado</span>
+                    <div id="dash-avg-risk" class="metric-value metric-value--sm metric-value--critical num">0<span class="u">/100</span></div>
+                  </div>
+                </div>
+
                 <div class="toolbar-row">
-                  <button id="zoom-out" type="button" class="btn-line btn-icon" aria-label="Alejar">-</button>
-                  <button id="zoom-reset" type="button" class="btn-line">100%</button>
-                  <button id="zoom-in" type="button" class="btn-line btn-icon" aria-label="Acercar">+</button>
-                  <button id="btn-maximize-map" type="button" class="btn-line">Maximizar</button>
+                  <button type="button" class="btn-pill" data-jump-view="alertas">Ir a Gestión de Alertas</button>
                 </div>
-              </div>
-              <div id="dash-map-viewport" class="map-viewport" role="region" aria-label="Mapa compacto del Atlántico">
-                <div id="dash-map-stage" class="map-stage" data-dragging="false">
-                  <img class="map-base" src="/assets/img/map/relieve.jpg" alt="Relieve costero del Atlántico" width="691" height="641" draggable="false" />
-                  <img class="map-overlay" src="/assets/img/map/plan.png" alt="" width="691" height="641" draggable="false" />
-                  <div id="dash-map-pins" class="map-pins"></div>
-                </div>
-              </div>
-              <div class="map-legend">
-                <span class="legend-item"><span class="legend-swatch swatch--preservacion"></span>Preservación</span>
-                <span class="legend-item"><span class="legend-swatch swatch--restauracion"></span>Restauración</span>
-                <span class="legend-item"><span class="legend-swatch swatch--recuperacion"></span>Recuperación</span>
-                <span class="legend-item"><span class="legend-swatch swatch--rehabilitacion"></span>Rehabilitación</span>
-                <span class="legend-item"><span class="legend-swatch swatch--manglar"></span>Manglar probable</span>
-              </div>
-            </article>
-          </div>
+              </article>
 
-          <div class="lower-band">
-            <article class="ticks band-card">
-              <h2 class="panel-title">Sectores monitoreados</h2>
-              <hr class="band-divider" />
-              <div class="metric-value num">5<span class="u">zonas</span></div>
-              <span class="ruled-desc">Mallorquín, Balboa, Tubará, Juan de Acosta y Totumo</span>
-            </article>
-
-            <article class="ticks band-card">
-              <h2 class="panel-title">Bonos de carbono</h2>
-              <hr class="band-divider" />
-              <div class="metric-value num">1,280<span class="u">tCO₂</span></div>
-              <span class="ruled-desc">Trazabilidad ESG y bonos ciudadanos activos</span>
-            </article>
-
-            <article class="ticks band-card">
-              <h2 class="panel-title">Última respuesta Agente IA</h2>
-              <hr class="band-divider" />
-              <div id="dash-last-ai" class="metric-value num">En espera</div>
-              <span id="dash-last-ai-sub" class="ruled-desc">Sin alertas precargadas hasta prueba.bat</span>
-            </article>
-          </div>
-        </section>
-
-        <!-- VISTA 2: MAPA EN VIVO (100% PURO, SIN FORMULARIO NI CONTROLES EXTRA) -->
-        <section id="view-mapa" class="view-panel view-panel--map-only" data-active="false" aria-label="Mapa en vivo del Atlántico">
-          <div id="pure-map-viewport" class="map-viewport map-viewport--pure">
-            <div id="pure-map-stage" class="map-stage" data-dragging="false">
-              <img class="map-base" src="/assets/img/map/relieve.jpg" alt="Mapa completo del Atlántico" width="691" height="641" draggable="false" />
-              <img class="map-overlay" src="/assets/img/map/plan.png" alt="" width="691" height="641" draggable="false" />
-              <div id="pure-map-pins" class="map-pins"></div>
+              <!-- Subecosistemas en cuadritos 2x2 debajo de Estado del ecosistema -->
+              <div id="subecosystems-list" class="subeco-list"></div>
             </div>
+
+            <!-- Mapa Georreferenciado Real (KMZ + Zonas de Calor) clicable -->
+            <article class="ticks dash-map-card">
+              <div class="panel-head">
+                <h2 class="panel-title">Mapa de zonas de calor C.R.A</h2>
+                <button id="btn-open-map-modal" type="button" class="btn-line">Ampliar mapa</button>
+              </div>
+              <div
+                id="dash-map-viewport"
+                class="map-viewport map-viewport--clickable"
+                role="button"
+                tabindex="0"
+                aria-label="Abrir modal completo del mapa de zonas de calor y alertas"
+              ></div>
+              <div class="map-legend">
+                <span class="legend-item"><span class="legend-swatch swatch--kmz"></span>Prioridades KMZ</span>
+                <span class="legend-item"><span class="legend-swatch swatch--heat-low"></span>Baja densidad</span>
+                <span class="legend-item"><span class="legend-swatch swatch--heat-mid"></span>Media densidad</span>
+                <span class="legend-item"><span class="legend-swatch swatch--heat-high"></span>Alta densidad</span>
+              </div>
+            </article>
           </div>
+
+          <!-- Últimas 10 alertas (efecto de prioridad) -->
+          <article class="ticks">
+            <div class="panel-head">
+              <h2 class="panel-title">Últimas 10 alertas</h2>
+              <button type="button" class="btn-line" data-jump-view="alertas">Ver todas</button>
+            </div>
+
+            <div id="dash-alerts-empty" class="empty-box">
+              <strong>Sin alertas registradas.</strong>
+              <span class="ruled-desc">Cuando ingresen reportes aparecerán aquí las 10 alertas más recientes.</span>
+            </div>
+
+            <div id="dash-alerts-table-wrap" class="table-scroll" style="display: none">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Radicado</th>
+                    <th scope="col">Zona</th>
+                    <th scope="col">Anomalía</th>
+                    <th scope="col">Prioridad</th>
+                    <th scope="col">Informe</th>
+                    <th scope="col">Detalle</th>
+                  </tr>
+                </thead>
+                <tbody id="dash-alerts-tbody"></tbody>
+              </table>
+            </div>
+          </article>
         </section>
 
-        <!-- VISTA 3: GESTIÓN DE ALERTAS OPCIÓN 3 (TARJETAS DE ESCALAMIENTO + MONITOREO IA) -->
+        <!-- VISTA 2: GESTIÓN DE ALERTAS (FILTROS POR PRIORIDAD + PAGINADO EXCLUSIVO) -->
         <section id="view-alertas" class="view-panel" data-active="false" aria-labelledby="alertas-heading">
           <div class="page-head">
             <div>
               <h1 id="alertas-heading" class="page-title">Gestión de Alertas</h1>
-              <p class="page-subtitle">Monitoreo en vivo de alertas clasificadas y validadas por la API del Bot Agente IA.</p>
+              <p class="page-subtitle">Monitoreo completo de los 5 subecosistemas del Atlántico.</p>
             </div>
-            <button id="btn-refresh-api" type="button" class="btn-line">Actualizar desde API</button>
+            <button id="btn-refresh-api" type="button" class="btn-line">Actualizar</button>
           </div>
 
           <div class="escalation-grid" role="group" aria-label="Criterio de escalamiento">
@@ -222,7 +203,7 @@
             <button type="button" class="esc-card esc-card--high" data-sev="ALTA" aria-pressed="false">
               <span class="esc-title">Alta</span>
               <span id="esc-cnt-alta" class="esc-count">0</span>
-              <span class="esc-rule">Prioridad en tiempo real Pro</span>
+              <span class="esc-rule">Prioridad en tiempo real</span>
             </button>
             <button type="button" class="esc-card esc-card--moderate" data-sev="MEDIA" aria-pressed="false">
               <span class="esc-title">Media</span>
@@ -232,47 +213,57 @@
             <button type="button" class="esc-card esc-card--low" data-sev="BAJA" aria-pressed="false">
               <span class="esc-title">Baja</span>
               <span id="esc-cnt-baja" class="esc-count">0</span>
-              <span class="esc-rule">Preventivo y trazabilidad ESG</span>
+              <span class="esc-rule">Preventivo</span>
             </button>
           </div>
 
           <article class="ticks">
-            <div class="panel-head">
-              <h2 class="panel-title">Registro de alertas activas (Agente IA)</h2>
+            <div class="alerts-filter-bar">
+              <div class="toolbar-row" role="group" aria-label="Filtrar alertas por prioridad">
+                <button type="button" class="btn-line sev-filter-btn" data-sev-filter="" aria-pressed="true">Todas</button>
+                <button type="button" class="btn-line sev-filter-btn" data-sev-filter="CRÍTICA" aria-pressed="false">Críticas</button>
+                <button type="button" class="btn-line sev-filter-btn" data-sev-filter="ALTA" aria-pressed="false">Altas</button>
+                <button type="button" class="btn-line sev-filter-btn" data-sev-filter="MEDIA" aria-pressed="false">Medias</button>
+                <button type="button" class="btn-line sev-filter-btn" data-sev-filter="BAJA" aria-pressed="false">Bajas</button>
+              </div>
               <span id="alerts-count-label" class="ruled-desc num">0 registros</span>
             </div>
 
             <div id="alerts-empty" class="empty-box">
-              <strong>Sin alertas activas en este momento.</strong>
-              <span class="ruled-desc">Este panel recibe en tiempo real las alertas verificadas por la API del Bot Agente IA. Ejecuta prueba.bat para enviar una alerta de prueba.</span>
+              <strong>Sin alertas para el filtro actual.</strong>
+              <span class="ruled-desc">Ejecuta prueba.bat para enviar una alerta de prueba o cambia el filtro de prioridad.</span>
             </div>
 
             <div id="alerts-table-wrap" class="table-scroll" style="display: none">
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th scope="col">ID</th>
-                    <th scope="col">Sector</th>
-                    <th scope="col">Hallazgo</th>
-                    <th scope="col">Severidad</th>
-                    <th scope="col">Riesgo</th>
-                    <th scope="col">Evaluación Bot IA</th>
-                    <th scope="col">Estado</th>
+                    <th scope="col">Radicado</th>
+                    <th scope="col">Zona</th>
+                    <th scope="col">Anomalía</th>
+                    <th scope="col">Prioridad</th>
+                    <th scope="col">Informe</th>
                     <th scope="col">Detalle</th>
                   </tr>
                 </thead>
                 <tbody id="alerts-tbody"></tbody>
               </table>
             </div>
+
+            <!-- Paginado exclusivo de Gestión de Alertas -->
+            <div id="alerts-pagination" class="pagination-bar" style="display: none">
+              <span id="pagination-info" class="ruled-desc num"></span>
+              <div id="pagination-controls" class="pagination-controls"></div>
+            </div>
           </article>
         </section>
 
-        <!-- VISTA 4: TENANTS Y PLANES -->
+        <!-- VISTA 3: TENANTS Y PLANES -->
         <section id="view-tenants" class="view-panel" data-active="false" aria-labelledby="tenants-heading">
           <div class="page-head">
             <div>
               <h1 id="tenants-heading" class="page-title">Tenants y planes</h1>
-              <p class="page-subtitle">Suscriptores conectados al motor de alertas C.R.A, Empresas B2B y Academia.</p>
+              <p class="page-subtitle">Suscriptores conectados a alertas C.R.A, Empresas B2B y Academia.</p>
             </div>
           </div>
           <article class="ticks">
@@ -293,60 +284,39 @@
           </article>
         </section>
 
-        <!-- VISTA 5: BONOS DE CARBONO -->
-        <section id="view-bonos" class="view-panel" data-active="false" aria-labelledby="bonos-heading">
-          <div class="page-head">
-            <div>
-              <h1 id="bonos-heading" class="page-title">Bonos de carbono e incentivos</h1>
-              <p class="page-subtitle">Trazabilidad de carbono azul empresarial e incentivos ciudadanos.</p>
-            </div>
-          </div>
-          <div class="hero-band">
-            <article class="ticks band-card">
-              <h2 class="panel-title">Bonos de carbono empresariales</h2>
-              <hr class="band-divider" />
-              <div class="metric-value num">1,280<span class="u">tCO₂</span></div>
-              <span class="ruled-desc">Stock monitoreado con respaldo técnico de alertas C.R.A</span>
-            </article>
-            <article class="ticks band-card">
-              <h2 class="panel-title">Reportes verificados por IA</h2>
-              <hr class="band-divider" />
-              <div id="bonds-validated-count" class="metric-value num">0<span class="u">reportes</span></div>
-              <span class="ruled-desc">Contabilizados para bonos a personas naturales</span>
-            </article>
-          </div>
-        </section>
-
-        <!-- VISTA 6: EXPORTAR INFORMES -->
+        <!-- VISTA 4: EXPORTAR INFORMES (CONECTADO A /api/reports/export) -->
         <section id="view-exportar" class="view-panel" data-active="false" aria-labelledby="export-heading">
           <div class="page-head">
             <div>
               <h1 id="export-heading" class="page-title">Exportar informes</h1>
-              <p class="page-subtitle">Descarga datos técnicos C.R.A de todas las alertas recibidas.</p>
+              <p class="page-subtitle">Descarga oficial en formatos de Datos Abiertos desde la API Mokaná.</p>
             </div>
           </div>
           <article class="ticks">
             <div class="export-grid">
               <div class="export-option">
                 <div class="ruled-copy">
-                  <strong class="ruled-title">Tabla analítica CSV</strong>
-                  <span class="ruled-desc">Exporta alertas, severidad, índice de riesgo y confianza IA.</span>
+                  <strong class="ruled-title">Informe General CSV</strong>
+                  <span class="ruled-desc">Archivo oficial UTF-8 listo para Excel y Power BI.</span>
                 </div>
                 <button id="exp-csv" type="button" class="btn-pill">Descargar CSV</button>
               </div>
               <div class="export-option">
                 <div class="ruled-copy">
-                  <strong class="ruled-title">Capa geográfica GeoJSON</strong>
-                  <span class="ruled-desc">Coordenadas listas para QGIS o plataforma C.R.A.</span>
+                  <strong class="ruled-title">Capa Geográfica GeoJSON</strong>
+                  <span class="ruled-desc">Estándar WGS84 listo para QGIS y ArcGIS C.R.A.</span>
                 </div>
                 <button id="exp-geojson" type="button" class="btn-line">Descargar GeoJSON</button>
               </div>
               <div class="export-option">
                 <div class="ruled-copy">
-                  <strong class="ruled-title">Informe ejecutivo PDF</strong>
-                  <span class="ruled-desc">Imprime o guarda el resumen oficial en PDF.</span>
+                  <strong class="ruled-title">Dataset JSON / PDF</strong>
+                  <span class="ruled-desc">Dataset abierto JSON o impresión ejecutiva en PDF.</span>
                 </div>
-                <button id="exp-pdf" type="button" class="btn-line">Imprimir PDF</button>
+                <div class="toolbar-row">
+                  <button id="exp-json" type="button" class="btn-line">JSON</button>
+                  <button id="exp-pdf" type="button" class="btn-line">PDF</button>
+                </div>
               </div>
             </div>
           </article>
@@ -355,49 +325,103 @@
     </div>
   </div>
 
-  <!-- Diálogo Maximizar Mapa -->
+  <!-- MODAL COMPLETO DEL MAPA (KMZ + ZONAS DE CALOR + FILTROS + CLUSTERING + FLYTO) -->
   <dialog id="map-dialog" class="native-dialog" aria-labelledby="dialog-map-title">
     <header class="dialog-header">
-      <h2 id="dialog-map-title" class="panel-title">Mapa georreferenciado C.R.A</h2>
-      <div class="toolbar-row">
-        <button id="dialog-zoom-out" type="button" class="btn-line btn-icon" aria-label="Alejar">-</button>
-        <button id="dialog-zoom-reset" type="button" class="btn-line">100%</button>
-        <button id="dialog-zoom-in" type="button" class="btn-line btn-icon" aria-label="Acercar">+</button>
-        <button id="btn-minimize-map" type="button" class="btn-pill">Minimizar</button>
+      <h2 id="dialog-map-title" class="panel-title">Mapa de zonas de calor y prioridades KMZ</h2>
+      <div class="map-filter-bar">
+        <select id="map-filter-sev" class="filter-select" aria-label="Filtrar por prioridad">
+          <option value="">Todas las prioridades</option>
+          <option value="CRÍTICA">Crítica</option>
+          <option value="ALTA">Alta</option>
+          <option value="MEDIA">Media</option>
+          <option value="BAJA">Baja</option>
+        </select>
+        <select id="map-filter-zone" class="filter-select" aria-label="Filtrar por zona">
+          <option value="">Todas las zonas</option>
+          <option value="zone_mallorquin">Ciénaga de Mallorquín</option>
+          <option value="zone_balboa">Puerto Colombia</option>
+          <option value="zone_tubara">Tubará</option>
+          <option value="zone_juan_acosta">Juan de Acosta</option>
+          <option value="zone_totumo">Ciénaga del Totumo</option>
+        </select>
+        <button id="btn-toggle-kmz" type="button" class="btn-line" aria-pressed="true">Capa KMZ</button>
+        <button id="btn-minimize-map" type="button" class="btn-pill">Cerrar</button>
       </div>
     </header>
-    <div class="dialog-map-body">
-      <div id="dialog-map-viewport" class="map-viewport map-viewport--full">
-        <div id="dialog-map-stage" class="map-stage" data-dragging="false">
-          <img class="map-base" src="/assets/img/map/relieve.jpg" alt="Relieve del Atlántico" width="691" height="641" draggable="false" />
-          <img class="map-overlay" src="/assets/img/map/plan.png" alt="" width="691" height="641" draggable="false" />
-          <div id="dialog-map-pins" class="map-pins"></div>
+    <div class="map-modal-grid">
+      <div class="map-modal-canvas">
+        <div id="modal-map-viewport" class="map-viewport map-viewport--modal"></div>
+      </div>
+
+      <aside class="map-modal-sidebar">
+        <div>
+          <h3 class="ruled-title" style="margin-bottom: var(--space-xs)">Intensidad de zonas de calor</h3>
+          <div class="map-legend" style="margin-top: 0">
+            <span class="legend-item"><span class="legend-swatch swatch--heat-low"></span>1 alerta</span>
+            <span class="legend-item"><span class="legend-swatch swatch--heat-mid"></span>2–3 alertas</span>
+            <span class="legend-item"><span class="legend-swatch swatch--heat-high"></span>4+ alertas</span>
+            <span class="legend-item"><span class="legend-swatch swatch--kmz"></span>Polígonos KMZ</span>
+          </div>
         </div>
-      </div>
+
+        <div>
+          <h3 class="ruled-title" style="margin-bottom: var(--space-xs)">Prioridad de indicadores</h3>
+          <div class="map-legend" style="margin-top: 0">
+            <span class="legend-item"><span class="legend-swatch swatch--critica"></span>Crítica</span>
+            <span class="legend-item"><span class="legend-swatch swatch--alta"></span>Alta</span>
+            <span class="legend-item"><span class="legend-swatch swatch--media"></span>Media</span>
+            <span class="legend-item"><span class="legend-swatch swatch--baja"></span>Baja</span>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="ruled-title" style="margin-bottom: var(--space-xs)">Lugares con alertas activas</h3>
+          <p class="ruled-desc" style="margin-bottom: var(--space-xs)">Haz clic en una alerta para geolocalizarla en el mapa.</p>
+          <div id="map-modal-alerts-list" class="ruled-list map-alerts-scroll"></div>
+        </div>
+      </aside>
     </div>
-    <footer class="dialog-footer">
-      <div class="map-legend">
-        <span class="legend-item"><span class="legend-swatch swatch--preservacion"></span>Preservación</span>
-        <span class="legend-item"><span class="legend-swatch swatch--restauracion"></span>Restauración</span>
-        <span class="legend-item"><span class="legend-swatch swatch--recuperacion"></span>Recuperación</span>
-        <span class="legend-item"><span class="legend-swatch swatch--rehabilitacion"></span>Rehabilitación</span>
-        <span class="legend-item"><span class="legend-swatch swatch--manglar"></span>Manglar probable</span>
-      </div>
-    </footer>
   </dialog>
 
-  <!-- Diálogo de Informe Técnico IA (Solo lectura, sin validación manual) -->
+  <!-- MODAL DE DETALLE DE ALERTA -->
   <dialog id="detail-dialog" class="native-dialog native-dialog--detail" aria-labelledby="detail-title">
     <header class="dialog-header">
-      <h2 id="detail-title" class="panel-title">Informe técnico Agente IA</h2>
+      <h2 id="detail-title" class="panel-title">Detalle de alerta</h2>
       <button id="btn-close-detail" type="button" class="btn-line">Cerrar</button>
     </header>
     <div id="detail-body" class="dialog-body"></div>
-    <footer class="dialog-footer">
-      <span class="ruled-desc">Evaluación generada automáticamente por la API del Bot Mokaná.</span>
-    </footer>
   </dialog>
 
+  <!-- MODAL DE DETALLE DE CIÉNAGA / SUBECOSISTEMA -->
+  <dialog id="zone-dialog" class="native-dialog native-dialog--detail" aria-labelledby="zone-dialog-title">
+    <header class="dialog-header">
+      <div>
+        <h2 id="zone-dialog-title" class="panel-title">Detalle de subecosistema</h2>
+        <p id="zone-dialog-desc" class="ruled-desc"></p>
+      </div>
+      <button id="btn-close-zone" type="button" class="btn-line">Cerrar</button>
+    </header>
+    <div id="zone-dialog-body" class="dialog-body"></div>
+  </dialog>
+
+  <!-- LIGHTBOX DE IMAGEN COMPLETA CON ZOOM -->
+  <dialog id="image-lightbox" class="lightbox-dialog" aria-labelledby="lightbox-title">
+    <header class="dialog-header">
+      <h2 id="lightbox-title" class="panel-title">Evidencia fotográfica</h2>
+      <div class="toolbar-row">
+        <button id="lb-zoom-out" type="button" class="btn-line btn-icon" aria-label="Alejar imagen">-</button>
+        <button id="lb-zoom-reset" type="button" class="btn-line">100%</button>
+        <button id="lb-zoom-in" type="button" class="btn-line btn-icon" aria-label="Acercar imagen">+</button>
+        <button id="lb-close" type="button" class="btn-pill">Cerrar</button>
+      </div>
+    </header>
+    <div id="lb-stage" class="lightbox-stage-wrap">
+      <img id="lb-img" class="lightbox-img" src="" alt="Imagen ampliada de alerta" data-dragging="false" draggable="false" />
+    </div>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/assets/js/panel.js" defer></script>
 </body>
 </html>

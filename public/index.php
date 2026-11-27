@@ -47,13 +47,23 @@ if ($uriPath === '/auth/logout.php' || $uriPath === '/logout') {
     exit;
 }
 
-// 3. Login POST
+// 3. Login POST (bloqueo cruzado estricto C.R.A vs Empresa)
 if ($uriPath === '/auth/login.php' && $method === 'POST') {
-    $email = strtolower(trim((string) ($_POST['email'] ?? '')));
-    $pass  = (string) ($_POST['password'] ?? '');
-    $user  = DEMO_USERS[$email] ?? null;
+    $email       = strtolower(trim((string) ($_POST['email'] ?? '')));
+    $pass        = (string) ($_POST['password'] ?? '');
+    $selectedTab = ($_POST['tenant_type'] ?? 'cra') === 'subscriber' ? 'empresa' : 'cra';
+    $user        = DEMO_USERS[$email] ?? null;
 
     if ($user !== null && hash_equals($user['password'], $pass)) {
+        if ($user['role'] !== $selectedTab) {
+            $csrfToken  = $_SESSION['csrf_token'];
+            $flashError = 'Esta cuenta no corresponde al tipo de acceso seleccionado.';
+            $oldEmail   = $email;
+            $oldTenant  = $selectedTab === 'empresa' ? 'subscriber' : 'cra';
+            http_response_code(401);
+            require dirname(__DIR__) . '/views/auth/login.php';
+            exit;
+        }
         session_regenerate_id(true);
         $_SESSION['user_email'] = $email;
         $_SESSION['user_name']  = $user['name'];
@@ -65,7 +75,8 @@ if ($uriPath === '/auth/login.php' && $method === 'POST') {
     $csrfToken  = $_SESSION['csrf_token'];
     $flashError = 'Credenciales inválidas. Verifica tu correo y contraseña.';
     $oldEmail   = $email;
-    $oldTenant  = ($_POST['tenant_type'] ?? 'cra') === 'subscriber' ? 'subscriber' : 'cra';
+    $oldTenant  = $selectedTab === 'empresa' ? 'subscriber' : 'cra';
+    http_response_code(401);
     require dirname(__DIR__) . '/views/auth/login.php';
     exit;
 }

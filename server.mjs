@@ -34,6 +34,7 @@ const MIME = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".json": "application/json; charset=utf-8",
+  ".geojson": "application/geo+json; charset=utf-8",
 };
 
 function parseCookies(req) {
@@ -156,9 +157,20 @@ const server = http.createServer((req, res) => {
       const email = (params.get("email") || "").trim().toLowerCase();
       const password = params.get("password") || "";
       const tenantType = params.get("tenant_type") || "cra";
+      const expectedRole = tenantType === "subscriber" ? "empresa" : "cra";
       const user = USERS[email];
 
       if (user && user.password === password) {
+        if (user.role !== expectedRole) {
+          res.writeHead(401, { "Content-Type": "text/html; charset=utf-8" });
+          return res.end(
+            renderLoginHtml({
+              flashError: "Esta cuenta no corresponde al tipo de acceso seleccionado.",
+              oldEmail: email,
+              oldTenant: tenantType,
+            })
+          );
+        }
         const sid = crypto.randomBytes(16).toString("hex");
         sessions.set(sid, { email, role: user.role });
         res.writeHead(302, {
