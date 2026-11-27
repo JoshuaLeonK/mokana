@@ -26,6 +26,16 @@ class TechnicalReportCRA(BaseModel):
         default=None,
         description="Si es_valida es False, explicación amable y breve para el ciudadano indicando por qué debe enviar otra foto o ajustar su descripción.",
     )
+    categoria_inferida_id: str = Field(
+        description=(
+            "ID de la categoría de alerta que mejor corresponde a la imagen y el texto: "
+            "'alert_tala' (Tala o relleno ilegal), 'alert_olor' (Agua con olor extrano), "
+            "'alert_color' (Agua con color raro), 'alert_fauna' (Fauna o basuras) o 'alert_otro' (Otro incidente)."
+        )
+    )
+    categoria_inferida_titulo: str = Field(
+        description="Título limpio de la categoría inferida: 'Tala o relleno ilegal', 'Agua con olor extrano', 'Agua con color raro', 'Fauna o basuras' u 'Otro incidente'."
+    )
     puntaje_confianza_ia: int = Field(
         description="Puntaje de confianza y coherencia multimodal (0 a 100) entre la fotografía, el texto del ciudadano y la categoría seleccionada."
     )
@@ -194,6 +204,8 @@ class GeminiAnalyst:
         return {
             "es_valida": True,
             "motivo_rechazo": None,
+            "categoria_inferida_id": "alert_color",
+            "categoria_inferida_titulo": category_title or "Agua con color raro",
             "puntaje_confianza_ia": 88,
             "coherencia_foto_descripcion": (
                 f"La descripción del ciudadano ('{user_description}') presenta coherencia directa con la categoría '{category_title}'."

@@ -26,7 +26,7 @@ app = FastAPI(
         "Sistema de Notificación, Gestión y Respuesta en Tiempo Real para los Manglares del Atlántico. "
         "Integra Tótems QR/NFC, Bot de WhatsApp (Zernio), IA Multimodal (Gemini 2.5 Flash) y Notificaciones por Correo (Resend)."
     ),
-    version="2.0.0",
+    version="2.1.0",
 )
 
 app.add_middleware(
@@ -42,15 +42,11 @@ analyst = GeminiAnalyst()
 state_mgr = StateManager()
 mailer = EmailNotifier()
 
-# Deduplicación de eventos de Zernio
 PROCESSED_EVENTS: Set[str] = set()
-
-# Colas de Server-Sent Events (SSE) para empujar eventos en vivo al Panel de Administración
 SSE_CLIENTS: List[asyncio.Queue] = []
 
 
 async def broadcast_realtime_event(event_type: str, data: Dict[str, Any]) -> None:
-    """Empuja en tiempo real cualquier reporte nuevo o actualización a todos los paneles web conectados vía SSE."""
     payload = {"event": event_type, "data": data}
     for q in list(SSE_CLIENTS):
         try:
@@ -83,21 +79,18 @@ class UpdateReportRequest(BaseModel):
     nivel_severidad: Optional[str] = Field(default=None, description="'BAJA', 'MEDIA', 'ALTA', 'CRÍTICA'")
     note: Optional[str] = Field(default=None, description="Nota de seguimiento o bitácora oficial de la C.R.A.")
     author: Optional[str] = Field(default="Panel Central C.R.A.")
-    notify_citizen_whatsapp: bool = Field(
-        default=True,
-        description="Si es True y el reporte vino de WhatsApp, le envía un mensaje automático al ciudadano informándole el cambio de estado.",
-    )
+    notify_citizen_whatsapp: bool = Field(default=True)
 
 
 class SubscriberCreateRequest(BaseModel):
-    name: str = Field(description="Nombre del responsable o contacto")
-    email: str = Field(description="Correo electrónico donde recibirá los informes y alertas vía Resend")
-    organization: str = Field(description="Nombre de la entidad (C.R.A., Universidad, Empresa ESG, etc.)")
-    type: str = Field(default="EMPRESA", description="Rol del destinatario: 'CRA' | 'EMPRESA' | 'ACADEMIA'")
-    plan: str = Field(default="PRO_DATA_B2B", description="'INSTITUCIONAL' | 'PRO_DATA_B2B' | 'ENTERPRISE_B2B'")
-    zones: List[str] = Field(default=["*"], description="Lista de zone_id a suscribir o ['*'] para todas")
-    categories: List[str] = Field(default=["*"], description="Lista de category_id a suscribir o ['*'] para todas")
-    min_severity: str = Field(default="BAJA", description="Severidad mínima para recibir correo: 'BAJA', 'MEDIA', 'ALTA', 'CRÍTICA'")
+    name: str
+    email: str
+    organization: str
+    type: str = Field(default="EMPRESA", description="'CRA' | 'EMPRESA' | 'ACADEMIA'")
+    plan: str = Field(default="PRO_DATA_B2B")
+    zones: List[str] = Field(default=["*"])
+    categories: List[str] = Field(default=["*"])
+    min_severity: str = Field(default="BAJA")
     active: bool = Field(default=True)
 
 
@@ -114,25 +107,22 @@ class SubscriberUpdateRequest(BaseModel):
 
 
 class NotificationSettingsUpdate(BaseModel):
-    resend_api_key: Optional[str] = Field(default=None, description="API Key de Resend (re_...)")
-    from_email: Optional[str] = Field(default=None, description="Remitente verificado en Resend, ej. 'Mokaná C.R.A. <alertas@joshual.tech>'")
-    auto_notify_email: Optional[bool] = Field(default=None, description="Activar/desactivar envío automático de correos al crear reporte")
-    notify_whatsapp_on_status_change: Optional[bool] = Field(default=None)
+    resend_api_key: Optional[str] = None
+    from_email: Optional[str] = None
+    auto_notify_email: Optional[bool] = None
+    notify_whatsapp_on_status_change: Optional[bool] = None
 
 
 # =============================================================================
-# EXTRACCIÓN Y FLUJO DEL BOT DE WHATSAPP (ZERNIO + GEMINI + RESEND)
+# EXTRACCIÓN Y FLUJO DIRECTO DEL BOT DE WHATSAPP (SIN EMOJIS, CORTO Y AUTOMÁTICO)
 # =============================================================================
 
 def _extract_incoming_data(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Extrae de manera uniforme el texto, clic interactivo, imagen adjunta o ubicación GPS
-    del payload `message.received` de Zernio.
-    """
     message = payload.get("message") or {}
     account = payload.get("account") or message.get("account") or {}
     conversation = payload.get("conversation") or message.get("conversation") or {}
     sender = message.get("sender") or payload.get("sender") or {}
+    metadata = message.get("metadata") or payload.get("metadata") or {}
 
     account_id = account.get("id") or account.get("_id")
     conversation_id = (
@@ -145,6 +135,7 @@ def _extract_incoming_data(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     interactive_id = (
         message.get("interactiveId")
+        or metadata.get("interactiveId")
         or (message.get("interactive") or {}).get("id")
         or (message.get("interactive") or {}).get("list_reply", {}).get("id")
         or (message.get("interactive") or {}).get("button_reply", {}).get("id")
@@ -185,7 +176,7 @@ def _extract_incoming_data(payload: Dict[str, Any]) -> Dict[str, Any]:
         "conversation_id": conversation_id,
         "message_id": message_id,
         "sender_phone": sender.get("phoneNumber") or sender.get("id") or conversation.get("platformConversationId") or "desconocido",
-        "sender_name": sender.get("name") or "Ciudadano Vigía",
+        "sender_name": sender.get("name") or "Ciudadano Vigia",
         "text": text,
         "interactive_id": interactive_id,
         "effective_input": effective_input,
@@ -194,230 +185,238 @@ def _extract_incoming_data(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+async def _finalize_and_analyze_report(
+    conv_id: str,
+    acc_id: Optional[str],
+    data: Dict[str, Any],
+    session: Dict[str, Any],
+) -> None:
+    """
+    Se ejecuta automáticamente apenas la sesión ya cuenta con Imagen + Texto (lleguen juntos o por separado).
+    Si el usuario no había elegido zona o categoría, las infiere del texto o con Gemini sin pedir nada más.
+    """
+    # 1. Asegurar Zona (si no se seleccionó antes, intentar detectarla del texto o usar Ciénaga de Mallorquín por defecto)
+    if not session.get("zone_id"):
+        detected_zone = state_mgr.detect_zone_from_text(session.get("description") or "") or MANGROVE_ZONES[0]
+        session["zone_id"] = detected_zone["id"]
+        session["zone_title"] = detected_zone["title"]
+        session["zone_coords"] = detected_zone["coords"]
+
+    # 2. Asegurar Categoría preliminar (si no la eligió en el desplegable, se detecta del texto o Gemini la clasifica)
+    if not session.get("category_id"):
+        detected_cat = state_mgr.detect_category_from_text(session.get("description") or "")
+        if detected_cat:
+            session["category_id"] = detected_cat["id"]
+            session["category_title"] = detected_cat["title"]
+        else:
+            session["category_id"] = "alert_otro"
+            session["category_title"] = "Determinado por IA"
+
+    await zernio.send_text(
+        conv_id,
+        "Verificando imagen y descripcion con IA...",
+        account_id=acc_id,
+    )
+
+    ai_result = await analyst.analyze_report(
+        zone_title=session["zone_title"],
+        category_title=session["category_title"],
+        user_description=session["description"],
+        image_url=session["image_url"],
+    )
+
+    # Si el usuario no había tocado el desplegable de anomalías, usamos la categoría que Gemini infirió de la foto+texto
+    if session["category_title"] == "Determinado por IA" or session["category_id"] == "alert_otro":
+        inferred_id = ai_result.get("categoria_inferida_id")
+        inferred_cat = next((c for c in ALERT_CATEGORIES if c["id"] == inferred_id), None)
+        if inferred_cat:
+            session["category_id"] = inferred_cat["id"]
+            session["category_title"] = inferred_cat["title"]
+
+    if not ai_result.get("es_valida", True):
+        motivo = ai_result.get("motivo_rechazo") or "La imagen no coincide con la descripcion enviada."
+        # Limpiamos solo la imagen para que pueda mandar la foto correcta sin perder su texto
+        session["image_url"] = None
+        await zernio.send_text(
+            conv_id,
+            f"No se pudo validar el reporte: {motivo}\nEnvia una foto real que coincida con la descripcion.",
+            account_id=acc_id,
+        )
+        return
+
+    saved_record = state_mgr.save_report(
+        conversation_id=conv_id,
+        sender_phone=data["sender_phone"],
+        sender_name=data["sender_name"],
+        session=session,
+        ai_report=ai_result,
+        source="WHATSAPP_TOTEM",
+    )
+
+    settings = state_mgr.get_settings()
+    email_logs: List[Dict[str, Any]] = []
+    if settings.get("auto_notify_email", True):
+        subscribers = state_mgr.list_subscribers()
+        email_logs = await mailer.dispatch_notifications(saved_record, subscribers, settings)
+        saved_record = state_mgr.attach_email_logs(saved_record["id"], email_logs) or saved_record
+
+    await broadcast_realtime_event("report.created", saved_record)
+
+    cra_rep = saved_record["cra_technical_report"]
+    final_message = (
+        f"Reporte registrado y notificado a la C.R.A.\n"
+        f"Radicado: {saved_record['id']}\n"
+        f"Zona: {session['zone_title']}\n"
+        f"Anomalia: {session['category_title']}\n"
+        f"Prioridad: {cra_rep['nivel_severidad']} (Riesgo {cra_rep['indice_riesgo_ambiental']}/100)\n"
+        f"Informe: {cra_rep['titulo_hallazgo']}. {cra_rep['accion_recomendada_cra']}"
+    )
+
+    state_mgr.reset_session(conv_id)
+    session_after = state_mgr.get_session(conv_id)
+    session_after["last_report_id"] = saved_record["id"]
+    session_after["step"] = ConversationStep.WAITING_OPTIONAL_GPS
+
+    await zernio.send_text(conv_id, final_message, account_id=acc_id)
+
+
 async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
+    """
+    Flujo ultra-corto, sin emojis, con listas desplegables nativas y soporte directo de Imagen + Texto:
+    - Si llegan imagen y texto juntos (en un solo mensaje) o en mensajes separados (primero foto y luego texto,
+      o primero texto y luego foto), la IA procesa y registra el reporte inmediatamente sin pedir más pasos.
+    - Si el usuario prefiere ir paso a paso, usa los desplegables limpios de Zona y Anomalía.
+    """
     data = _extract_incoming_data(payload)
     conv_id = data["conversation_id"]
     acc_id = data["account_id"]
     if not conv_id:
-        logger.warning("Payload sin conversation_id: %s", payload)
         return
 
     text = data["text"]
+    interactive_id = data["interactive_id"]
     effective_input = data["effective_input"]
     image_url = data["image_url"]
     gps = data["gps"]
 
     session = state_mgr.get_session(conv_id)
-
     lower_text = text.lower()
-    if lower_text in {"hola", "inicio", "menu", "menú", "nuevo", "reiniciar", "cancelar"} or "totem" in lower_text or "tótem" in lower_text:
-        session = state_mgr.reset_session(conv_id)
 
+    # Comandos de reinicio
+    if lower_text in {"hola", "inicio", "menu", "menú", "nuevo", "reiniciar", "cancelar"} and not image_url:
+        session = state_mgr.reset_session(conv_id)
+        await zernio.send_zone_list(conv_id, account_id=acc_id)
+        return
+
+    # Si envía un Pin GPS
     if gps:
         session["gps"] = gps
-        if session["step"] == ConversationStep.WAITING_OPTIONAL_GPS and session.get("last_report_id"):
+        if session.get("last_report_id"):
             updated = state_mgr.update_report_gps(session["last_report_id"], gps["lat"], gps["lng"])
             if updated:
                 await broadcast_realtime_event("report.updated", updated)
             await zernio.send_text(
                 conv_id,
-                f"📍 *¡Ubicación GPS exacta registrada!* Se actualizó el radicado *{session['last_report_id']}* "
-                "en el Centro de Monitoreo de la C.R.A.\n\nEscribe *Hola* cuando desees realizar un nuevo reporte.",
-                account_id=acc_id,
-            )
-            state_mgr.reset_session(conv_id)
-            return
-
-    # PASO 1: Detectar Zona del Manglar (Automático por Tótem QR/NFC o por Lista Interactiva)
-    if session["step"] == ConversationStep.WAITING_ZONE:
-        detected_zone = state_mgr.detect_zone_from_text(effective_input) or state_mgr.detect_zone_from_text(text)
-        if detected_zone:
-            session["zone_id"] = detected_zone["id"]
-            session["zone_title"] = detected_zone["title"]
-            session["zone_coords"] = detected_zone["coords"]
-            session["step"] = ConversationStep.WAITING_CATEGORY
-            await zernio.send_category_list(conv_id, detected_zone["title"], account_id=acc_id)
-            return
-        else:
-            await zernio.send_zone_list(conv_id, account_id=acc_id)
-            return
-
-    # PASO 2: Selección de la Categoría de Alerta
-    if session["step"] == ConversationStep.WAITING_CATEGORY:
-        maybe_zone = state_mgr.detect_zone_from_text(effective_input)
-        if maybe_zone and effective_input.startswith("zone_"):
-            session["zone_id"] = maybe_zone["id"]
-            session["zone_title"] = maybe_zone["title"]
-            session["zone_coords"] = maybe_zone["coords"]
-            await zernio.send_category_list(conv_id, maybe_zone["title"], account_id=acc_id)
-            return
-
-        detected_cat = state_mgr.detect_category_from_text(effective_input)
-        if detected_cat:
-            session["category_id"] = detected_cat["id"]
-            session["category_title"] = detected_cat["title"]
-            session["step"] = ConversationStep.WAITING_DESCRIPTION
-            await zernio.send_text(
-                conv_id,
-                f"✅ Has seleccionado: *{detected_cat['title']}* en *{session['zone_title']}*.\n\n"
-                "📝 *Paso 2 de 3:* Por favor escribe una *descripción breve* de lo que estás observando "
-                "(qué ocurre exactamente, magnitud o detalles clave para que nuestra IA valide la coherencia).",
-                account_id=acc_id,
-            )
-            return
-        else:
-            await zernio.send_category_list(conv_id, session["zone_title"] or "Manglar del Atlántico", account_id=acc_id)
-            return
-
-    # PASO 3: Recibir Descripción Breve en Texto
-    if session["step"] == ConversationStep.WAITING_DESCRIPTION:
-        maybe_cat = state_mgr.detect_category_from_text(effective_input)
-        if maybe_cat and effective_input.startswith("alert_"):
-            session["category_id"] = maybe_cat["id"]
-            session["category_title"] = maybe_cat["title"]
-            await zernio.send_text(
-                conv_id,
-                f"✅ Categoría actualizada a: *{maybe_cat['title']}*.\n\n"
-                "📝 Por favor escribe una *descripción breve* de lo que estás observando:",
+                f"Ubicacion GPS actualizada en el reporte {session['last_report_id']}.",
                 account_id=acc_id,
             )
             return
 
-        if image_url and len(text) >= 5:
-            session["description"] = text
-            session["image_url"] = image_url
-            session["step"] = ConversationStep.WAITING_PHOTO
-        elif len(text) >= 4 and not image_url:
-            session["description"] = text
-            session["step"] = ConversationStep.WAITING_PHOTO
-            await zernio.send_text(
-                conv_id,
-                "📸 *Paso 3 de 3 (Verificación IA):* ¡Descripción registrada!\n\n"
-                "Ahora toma o adjunta una *FOTO* del lugar para verificar que la información concuerda "
-                "y generar el informe técnico oficial para la C.R.A.\n\n"
-                "_(Opcional: También puedes adjuntar tu pin de ubicación GPS 📍)_.",
-                account_id=acc_id,
-            )
-            return
-        else:
-            await zernio.send_text(
-                conv_id,
-                "📝 Por favor escribe primero una *descripción breve en texto* (al menos una frase corta) "
-                "contando qué estás viendo en el manglar:",
-                account_id=acc_id,
-            )
+    # 1. ¿El usuario seleccionó una Zona del desplegable o mandó el mensaje automático del Tótem QR/NFC?
+    is_totem_greeting = "totem" in lower_text or "tótem" in lower_text or "reportando desde" in lower_text
+    detected_zone = state_mgr.detect_zone_from_text(interactive_id or "") or (
+        state_mgr.detect_zone_from_text(text) if (is_totem_greeting or not session.get("zone_id")) else None
+    )
+
+    if detected_zone and (
+        (interactive_id and interactive_id.startswith("zone_"))
+        or is_totem_greeting
+        or (not image_url and text.strip().lower() == detected_zone["title"].lower())
+    ):
+        session["zone_id"] = detected_zone["id"]
+        session["zone_title"] = detected_zone["title"]
+        session["zone_coords"] = detected_zone["coords"]
+        session["step"] = ConversationStep.WAITING_CATEGORY
+
+        # Si ya había enviado antes foto y descripción, analiza de inmediato
+        if session.get("image_url") and session.get("description"):
+            await _finalize_and_analyze_report(conv_id, acc_id, data, session)
             return
 
-    # PASO 4: Recibir Foto -> Validar Autenticidad/Coherencia con Gemini -> Informe CRA + Correos Resend
-    if session["step"] == ConversationStep.WAITING_PHOTO:
-        if not image_url:
-            if gps:
-                await zernio.send_text(
-                    conv_id,
-                    "📍 Ubicación GPS guardada. Ahora por favor envíame la *FOTO* 📸 de evidencia para validar el reporte.",
-                    account_id=acc_id,
-                )
-                return
+        await zernio.send_category_list(conv_id, detected_zone["title"], account_id=acc_id)
+        return
 
-            if text:
-                session["description"] = f"{session['description']}. {text}"
-            await zernio.send_text(
-                conv_id,
-                "📸 Para completar el reporte y verificar su autenticidad, por favor adjunta una *FOTO* de la situación.",
-                account_id=acc_id,
-            )
+    # 2. ¿El usuario seleccionó una Anomalía del desplegable?
+    detected_cat = state_mgr.detect_category_from_text(interactive_id or "")
+    if not detected_cat and not image_url:
+        # Si tocó una opción del desplegable y Zernio mandó el título de la fila en `text`
+        for cat in ALERT_CATEGORIES:
+            if text.strip().lower() == cat["title"].lower() or text.strip().lower() == cat["id"].lower():
+                detected_cat = cat
+                break
+
+    if detected_cat:
+        session["category_id"] = detected_cat["id"]
+        session["category_title"] = detected_cat["title"]
+        session["step"] = ConversationStep.WAITING_DESCRIPTION
+
+        # Si ya teníamos imagen y descripción guardadas, procesamos de inmediato
+        if session.get("image_url") and session.get("description"):
+            await _finalize_and_analyze_report(conv_id, acc_id, data, session)
             return
-
-        session["image_url"] = image_url
-        if text and text != session.get("description"):
-            session["description"] = f"{session['description']} ({text})"
 
         await zernio.send_text(
             conv_id,
-            "⏳ *Analizando evidencia con IA Multimodal (Gemini)...*\n"
-            "Verificando autenticidad fotográfica, coherencia con tu descripción y clasificando el nivel de riesgo para la C.R.A.",
+            f"Anomalia: {detected_cat['title']}. Envia una foto y una descripcion breve de lo que ocurre.",
             account_id=acc_id,
         )
-
-        ai_result = await analyst.analyze_report(
-            zone_title=session["zone_title"],
-            category_title=session["category_title"],
-            user_description=session["description"],
-            image_url=session["image_url"],
-        )
-
-        if not ai_result.get("es_valida", True):
-            motivo = ai_result.get("motivo_rechazo") or (
-                "La fotografía enviada no parece coincidir con la descripción o con una situación del manglar."
-            )
-            await zernio.send_text(
-                conv_id,
-                f"⚠️ *No pudimos validar la evidencia*\n\n"
-                f"{motivo}\n\n"
-                "📸 Por favor envía una *nueva foto real* que concuerde con tu descripción, "
-                "o escribe *Reiniciar* si deseas cambiar el tipo de alerta.",
-                account_id=acc_id,
-            )
-            return
-
-        saved_record = state_mgr.save_report(
-            conversation_id=conv_id,
-            sender_phone=data["sender_phone"],
-            sender_name=data["sender_name"],
-            session=session,
-            ai_report=ai_result,
-            source="WHATSAPP_TOTEM",
-        )
-
-        # Disparar correos electrónicos vía Resend a Responsables C.R.A. y Suscriptores (Empresas / Academia)
-        settings = state_mgr.get_settings()
-        email_logs: List[Dict[str, Any]] = []
-        if settings.get("auto_notify_email", True):
-            subscribers = state_mgr.list_subscribers()
-            email_logs = await mailer.dispatch_notifications(saved_record, subscribers, settings)
-            saved_record = state_mgr.attach_email_logs(saved_record["id"], email_logs) or saved_record
-
-        # Emitir evento en vivo al Panel de Administración
-        await broadcast_realtime_event("report.created", saved_record)
-
-        cra_rep = saved_record["cra_technical_report"]
-        notified_count = len(email_logs)
-        parametros_txt = ", ".join(cra_rep.get("parametros_fisicoquimicos_alterados") or [])
-
-        final_message = (
-            f"✅ *¡REPORTE VERIFICADO Y NOTIFICADO A LA C.R.A.!*\n"
-            f"📋 *Radicado:* `{saved_record['id']}`\n"
-            f"📍 *Zona:* {session['zone_title']}\n"
-            f"🚨 *Prioridad IA:* *{cra_rep['nivel_severidad']}* (Riesgo: {cra_rep['indice_riesgo_ambiental']}/100 • Confianza: {cra_rep['puntaje_confianza_ia']}%)\n"
-            f"🏛️ *Asignado a:* {cra_rep['dependencia_responsable_cra']} (SLA: {cra_rep['sla_tiempo_respuesta_horas']}h)\n\n"
-            f"📄 *INFORME TÉCNICO C.R.A.:*\n"
-            f"• *Clasificación:* {cra_rep['subcategoria_tecnica_cra']}\n"
-            f"• *Coherencia Foto/Relato:* {cra_rep['coherencia_foto_descripcion']}\n"
-            f"• *Diagnóstico Físico-Químico:* {cra_rep['hipotesis_ambiental_quimica']}\n"
-            f"• *Parámetros Críticos:* {parametros_txt}\n"
-            f"• *Acción Recomendada:* {cra_rep['accion_recomendada_cra']}\n\n"
-            f"📧 *Notificaciones enviadas:* {notified_count} entidades notificadas por correo electrónico (C.R.A. y Red Científica/Empresarial).\n\n"
-            f"_{ai_result.get('mensaje_ciudadano', 'Gracias por proteger los manglares del Atlántico.')}_\n\n"
-            "📍 _(Opcional)_: Si deseas añadir tu *pin de ubicación GPS exacta*, envíalo ahora con el clip de WhatsApp, "
-            "o escribe *NUEVO* para otro reporte."
-        )
-
-        session["step"] = ConversationStep.WAITING_OPTIONAL_GPS
-        await zernio.send_text(conv_id, final_message, account_id=acc_id)
         return
 
-    # PASO 5: Si escribe de nuevo después de terminar un reporte
-    if session["step"] == ConversationStep.WAITING_OPTIONAL_GPS:
-        session = state_mgr.reset_session(conv_id)
-        detected_zone = state_mgr.detect_zone_from_text(effective_input) or state_mgr.detect_zone_from_text(text)
-        if detected_zone:
+    # 3. Captura directa de Imagen y/o Texto (en un solo mensaje o en mensajes separados)
+    if image_url:
+        session["image_url"] = image_url
+
+    if text and not is_totem_greeting:
+        # Si en el texto menciona alguna zona y aún no tenía zona, la guardamos
+        if not session.get("zone_id") and detected_zone:
             session["zone_id"] = detected_zone["id"]
             session["zone_title"] = detected_zone["title"]
             session["zone_coords"] = detected_zone["coords"]
-            session["step"] = ConversationStep.WAITING_CATEGORY
-            await zernio.send_category_list(conv_id, detected_zone["title"], account_id=acc_id)
+
+        # Guardamos o concatenamos la descripción libre
+        if session.get("description") and text not in session["description"]:
+            session["description"] = f"{session['description']}. {text}"
         else:
-            await zernio.send_zone_list(conv_id, account_id=acc_id)
+            session["description"] = text
+
+    # 4. ¡REGLA CLAVE! Si ya tenemos IMAGEN + TEXTO (hayan llegado juntos o separados), analizar de inmediato sin pedir más nada
+    if session.get("image_url") and session.get("description"):
+        await _finalize_and_analyze_report(conv_id, acc_id, data, session)
+        return
+
+    # 5. Si solo llegó la IMAGEN (sin texto todavía), pedir únicamente la descripción breve
+    if session.get("image_url") and not session.get("description"):
+        await zernio.send_text(
+            conv_id,
+            "Foto recibida. Escribe una descripcion breve de lo que ocurre para procesarla.",
+            account_id=acc_id,
+        )
+        return
+
+    # 6. Si solo llegó el TEXTO (sin imagen todavía), pedir únicamente la foto
+    if session.get("description") and not session.get("image_url"):
+        await zernio.send_text(
+            conv_id,
+            "Descripcion recibida. Envia la foto de evidencia para analizar el reporte.",
+            account_id=acc_id,
+        )
+        return
+
+    # 7. Si no hay ni zona ni imagen ni descripción aún, mostrar el desplegable de zonas
+    if not session.get("zone_id"):
+        await zernio.send_zone_list(conv_id, account_id=acc_id)
+    else:
+        await zernio.send_category_list(conv_id, session["zone_title"], account_id=acc_id)
 
 
 # =============================================================================
@@ -430,7 +429,7 @@ async def health_check() -> Dict[str, Any]:
     subs = state_mgr.list_subscribers()
     return {
         "service": "Mokaná WhatsApp Bot, C.R.A. Early Warning API & B2B Data Hub",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "status": "online",
         "zones_configured": len(MANGROVE_ZONES),
         "total_reports": len(reports),
@@ -463,7 +462,6 @@ async def zernio_webhook(
     event_id = x_zernio_event_id or payload.get("id")
 
     if event_name == "webhook.test":
-        logger.info("Recibido evento de prueba webhook.test de Zernio exitosamente.")
         return {"ok": True, "event": "webhook.test"}
 
     if event_id and event_id in PROCESSED_EVENTS:
@@ -480,10 +478,6 @@ async def zernio_webhook(
 
 @app.get("/api/events/stream")
 async def sse_events_stream(request: Request) -> StreamingResponse:
-    """
-    Stream SSE (Server-Sent Events) para que el Frontend Administrativo reciba nuevos reportes
-    y actualizaciones de estado en tiempo real sin necesidad de recargar la página.
-    """
     queue: asyncio.Queue = asyncio.Queue()
     SSE_CLIENTS.append(queue)
 
@@ -507,12 +501,11 @@ async def sse_events_stream(request: Request) -> StreamingResponse:
 
 @app.get("/api/reports")
 async def get_reports(
-    zone_id: Optional[str] = Query(default=None, description="Filtrar por zone_id"),
-    category_id: Optional[str] = Query(default=None, description="Filtrar por category_id"),
-    severity: Optional[str] = Query(default=None, description="Filtrar por severidad: BAJA, MEDIA, ALTA, CRÍTICA"),
-    status: Optional[str] = Query(default=None, description="Filtrar por estado de gestión C.R.A."),
+    zone_id: Optional[str] = Query(default=None),
+    category_id: Optional[str] = Query(default=None),
+    severity: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None),
 ) -> Dict[str, Any]:
-    """Lista todos los reportes ciudadanos e informes técnicos C.R.A. con soporte de filtros para el Panel de Administración."""
     reports = state_mgr.list_reports()
     if zone_id:
         reports = [r for r in reports if r.get("location", {}).get("zone_id") == zone_id]
@@ -531,7 +524,6 @@ async def get_reports(
 
 @app.get("/api/reports/{report_id}")
 async def get_single_report(report_id: str) -> Dict[str, Any]:
-    """Obtiene el detalle completo de un reporte y su historial de notificaciones por correo."""
     rep = state_mgr.get_report_by_id(report_id)
     if not rep:
         raise HTTPException(status_code=404, detail=f"Reporte {report_id} no encontrado")
@@ -540,10 +532,6 @@ async def get_single_report(report_id: str) -> Dict[str, Any]:
 
 @app.post("/api/reports")
 async def create_report_from_web(body: CreateReportRequest) -> Dict[str, Any]:
-    """
-    Permite crear un reporte directamente desde el Portal Web del Tótem o desde el Panel de Administración.
-    Pasa por la misma validación y clasificación técnica de Gemini y dispara los correos vía Resend.
-    """
     zone = next((z for z in MANGROVE_ZONES if z["id"] == body.zone_id), MANGROVE_ZONES[0])
     cat = next((c for c in ALERT_CATEGORIES if c["id"] == body.category_id), ALERT_CATEGORIES[0])
 
@@ -576,7 +564,7 @@ async def create_report_from_web(body: CreateReportRequest) -> Dict[str, Any]:
     saved = state_mgr.save_report(
         conversation_id="web_portal",
         sender_phone=body.citizen_phone or "web-totem",
-        sender_name=body.citizen_name or "Vigía Web / Tótem",
+        sender_name=body.citizen_name or "Vigia Web / Totem",
         session=pseudo_session,
         ai_report=ai_result,
         source="WEB_TOTEM",
@@ -594,25 +582,19 @@ async def create_report_from_web(body: CreateReportRequest) -> Dict[str, Any]:
 
 @app.patch("/api/reports/{report_id}")
 async def update_report_status(report_id: str, body: UpdateReportRequest) -> Dict[str, Any]:
-    """
-    Permite al Panel de Administración de la C.R.A. cambiar el estado de un reporte (ej. 'BRIGADA_DESPACHADA', 'RESUELTO'),
-    asignar responsable, agregar notas de bitácora y notificar automáticamente al ciudadano por WhatsApp.
-    """
     updated = state_mgr.update_report(report_id, body.model_dump(exclude_none=True))
     if not updated:
         raise HTTPException(status_code=404, detail=f"Reporte {report_id} no encontrado")
 
-    # Si vino de WhatsApp y notify_citizen_whatsapp es True, le avisamos al ciudadano del avance de la C.R.A.
     conv_id = updated.get("conversation_id")
     if body.notify_citizen_whatsapp and conv_id and conv_id != "web_portal":
-        nota_txt = f"\n📝 *Observación C.R.A.:* {body.note}" if body.note else ""
+        nota_txt = f"\nNota C.R.A.: {body.note}" if body.note else ""
         msg = (
-            f"🔔 *Actualización de tu reporte `{updated['id']}` (C.R.A.)*\n\n"
-            f"• *Zona:* {updated['location']['zone_title']}\n"
-            f"• *Nuevo Estado:* *{updated['status']}*\n"
-            f"• *Responsable:* {updated.get('assigned_to', 'C.R.A.')}"
-            f"{nota_txt}\n\n"
-            "_Gracias por ser parte de la red de vigías de Mokaná._"
+            f"Actualizacion de reporte {updated['id']} (C.R.A.)\n"
+            f"Zona: {updated['location']['zone_title']}\n"
+            f"Estado: {updated['status']}\n"
+            f"Responsable: {updated.get('assigned_to', 'C.R.A.')}"
+            f"{nota_txt}"
         )
         await zernio.send_text(conv_id, msg)
 
@@ -622,7 +604,6 @@ async def update_report_status(report_id: str, body: UpdateReportRequest) -> Dic
 
 @app.post("/api/reports/{report_id}/notify")
 async def manual_notify_report(report_id: str) -> Dict[str, Any]:
-    """Permite desde el Frontend reenviar o disparar manualmente las notificaciones por correo (Resend) de un reporte."""
     rep = state_mgr.get_report_by_id(report_id)
     if not rep:
         raise HTTPException(status_code=404, detail=f"Reporte {report_id} no encontrado")
@@ -637,7 +618,6 @@ async def manual_notify_report(report_id: str) -> Dict[str, Any]:
 
 @app.get("/api/stats")
 async def get_dashboard_stats() -> Dict[str, Any]:
-    """Métricas ejecutivas listas para las tarjetas superiores y gráficas del Panel de Administración."""
     reports = state_mgr.list_reports()
     subs = state_mgr.list_subscribers()
 
@@ -683,10 +663,9 @@ async def get_dashboard_stats() -> Dict[str, Any]:
 
 @app.get("/api/zones")
 async def get_zones_and_totems(whatsapp_phone: str = Query(default="573135865509")) -> Dict[str, Any]:
-    """Devuelve las 5 zonas de manglar del Atlántico, categorías de alerta y enlaces QR/NFC exactos para cada Tótem."""
     enriched_zones = []
     for z in MANGROVE_ZONES:
-        prefilled = f"Hola Mokaná, estoy reportando desde el Tótem de {z['title']}"
+        prefilled = f"Hola Mokana, estoy reportando desde el Totem de {z['title']}"
         wa_link = f"https://wa.me/{whatsapp_phone}?text={quote(prefilled)}"
         enriched_zones.append(
             {
@@ -704,13 +683,8 @@ async def get_zones_and_totems(whatsapp_phone: str = Query(default="573135865509
     }
 
 
-# =============================================================================
-# ENDPOINTS DE SUSCRIPTORES (C.R.A. + VENTA DE DATOS A EMPRESAS Y ACADEMIA)
-# =============================================================================
-
 @app.get("/api/subscribers")
-async def list_subscribers(type: Optional[str] = Query(default=None, description="CRA | EMPRESA | ACADEMIA")) -> Dict[str, Any]:
-    """Lista los responsables de la C.R.A. y los clientes B2B (Empresas y Academia) que reciben informes por correo."""
+async def list_subscribers(type: Optional[str] = Query(default=None)) -> Dict[str, Any]:
     subs = state_mgr.list_subscribers()
     if type:
         subs = [s for s in subs if (s.get("type") or "").upper() == type.upper()]
@@ -719,7 +693,6 @@ async def list_subscribers(type: Optional[str] = Query(default=None, description
 
 @app.post("/api/subscribers")
 async def create_subscriber(body: SubscriberCreateRequest) -> Dict[str, Any]:
-    """Crea desde el Frontend un nuevo destinatario de correo (Responsable C.R.A., Empresa cliente B2B o Universidad/Academia)."""
     created = state_mgr.add_subscriber(body.model_dump())
     await broadcast_realtime_event("subscriber.created", created)
     return {"ok": True, "subscriber": created}
@@ -727,7 +700,6 @@ async def create_subscriber(body: SubscriberCreateRequest) -> Dict[str, Any]:
 
 @app.patch("/api/subscribers/{subscriber_id}")
 async def update_subscriber(subscriber_id: str, body: SubscriberUpdateRequest) -> Dict[str, Any]:
-    """Actualiza filtros de zonas, categorías, severidad mínima o estado activo de un suscriptor desde el Frontend."""
     updated = state_mgr.update_subscriber(subscriber_id, body.model_dump(exclude_none=True))
     if not updated:
         raise HTTPException(status_code=404, detail=f"Suscriptor {subscriber_id} no encontrado")
@@ -736,20 +708,14 @@ async def update_subscriber(subscriber_id: str, body: SubscriberUpdateRequest) -
 
 @app.delete("/api/subscribers/{subscriber_id}")
 async def remove_subscriber(subscriber_id: str) -> Dict[str, Any]:
-    """Elimina un suscriptor de correo desde el Frontend."""
     ok = state_mgr.delete_subscriber(subscriber_id)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Suscriptor {subscriber_id} no encontrado")
     return {"ok": True, "deleted_id": subscriber_id}
 
 
-# =============================================================================
-# ENDPOINTS DE CONFIGURACIÓN DE CORREO (RESEND) DESDE EL FRONTEND
-# =============================================================================
-
 @app.get("/api/settings/notifications")
 async def get_notification_settings() -> Dict[str, Any]:
-    """Obtiene la configuración actual de notificaciones por correo (Resend) para mostrar en el Frontend."""
     s = state_mgr.get_settings()
     masked_key = ""
     raw_key = s.get("resend_api_key") or ""
@@ -766,7 +732,6 @@ async def get_notification_settings() -> Dict[str, Any]:
 
 @app.put("/api/settings/notifications")
 async def update_notification_settings(body: NotificationSettingsUpdate) -> Dict[str, Any]:
-    """Permite configurar la API Key de Resend, el correo remitente y las reglas automáticas directamente desde el Frontend."""
     updated = state_mgr.update_settings(body.model_dump(exclude_none=True))
     return {
         "ok": True,

@@ -17,7 +17,7 @@ logger = logging.getLogger("mokana.zernio")
 
 
 class ZernioClient:
-    """Cliente HTTP asíncrono para enviar mensajes de texto, listas interactivas y botones por WhatsApp vía Zernio."""
+    """Cliente HTTP asíncrono para enviar mensajes cortos y listas desplegables limpias (sin emojis) por WhatsApp vía Zernio."""
 
     def __init__(self) -> None:
         self.base_url = ZERNIO_BASE_URL
@@ -32,7 +32,6 @@ class ZernioClient:
 
     @staticmethod
     def verify_signature(raw_body: bytes, signature_header: Optional[str]) -> bool:
-        """Verifica la firma HMAC-SHA256 enviada en X-Zernio-Signature si ZERNIO_WEBHOOK_SECRET está configurado."""
         if not ZERNIO_WEBHOOK_SECRET:
             return True
         if not signature_header:
@@ -52,7 +51,6 @@ class ZernioClient:
         account_id: Optional[str] = None,
         reply_to: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Envía un mensaje de texto simple a la conversación activa en Zernio."""
         payload: Dict[str, Any] = {
             "accountId": account_id or self.default_account_id,
             "message": text,
@@ -66,32 +64,26 @@ class ZernioClient:
         conversation_id: str,
         account_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Envía una Lista Interactiva nativa de WhatsApp para que el usuario seleccione en qué manglar está."""
+        """Lista desplegable nativa de WhatsApp para elegir la zona del manglar (sin emojis, texto breve)."""
         rows = [
             {
                 "id": z["id"],
-                "title": z["title"][:24],  # Límite oficial de WhatsApp: 24 caracteres en row title
+                "title": z["title"][:24],
                 "description": z["description"][:72],
             }
             for z in MANGROVE_ZONES
         ]
-        body_text = (
-            "🌿 *¡Hola! Soy Mokaná*, el sistema de alerta temprana para los manglares del Atlántico (C.R.A.).\n\n"
-            "Para comenzar tu reporte, selecciona en el botón de abajo *¿en cuál zona de manglar te encuentras?*"
-        )
+        body_text = "Bienvenido a Mokana (C.R.A.). Selecciona la zona de manglar o envia directamente una foto con la descripcion del reporte."
         payload: Dict[str, Any] = {
             "accountId": account_id or self.default_account_id,
-            "message": body_text,
             "interactive": {
                 "type": "list",
-                "header": {"type": "text", "text": "Mokaná - Zonas de Manglar"},
                 "body": {"text": body_text},
-                "footer": {"text": "C.R.A. Atlántico • Ciencia Ciudadana"},
                 "action": {
-                    "button": "Seleccionar Manglar",
+                    "button": "Elegir manglar",
                     "sections": [
                         {
-                            "title": "Manglares del Atlántico",
+                            "title": "Zonas de manglar",
                             "rows": rows,
                         }
                     ],
@@ -106,7 +98,7 @@ class ZernioClient:
         zone_title: str,
         account_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Envía una Lista Interactiva nativa de WhatsApp con las 5 anomalías reportables a la C.R.A."""
+        """Lista desplegable nativa de WhatsApp para elegir la anomalía (sin emojis, sin números, texto breve)."""
         rows = [
             {
                 "id": cat["id"],
@@ -115,50 +107,21 @@ class ZernioClient:
             }
             for cat in ALERT_CATEGORIES
         ]
-        body_text = (
-            f"📍 Zona detectada: *{zone_title}*\n\n"
-            "¿Qué anomalía o incidente deseas reportar a la C.R.A.? Toca el botón de abajo para elegir la opción:"
-        )
+        body_text = f"Zona: {zone_title}. Selecciona la anomalia en el desplegable o envia directamente una foto con tu descripcion."
         payload: Dict[str, Any] = {
             "accountId": account_id or self.default_account_id,
-            "message": body_text,
             "interactive": {
                 "type": "list",
-                "header": {"type": "text", "text": "Tipo de Alerta Ambiental"},
                 "body": {"text": body_text},
-                "footer": {"text": "Selecciona una opción de la lista"},
                 "action": {
-                    "button": "Elegir Tipo de Alerta",
+                    "button": "Elegir anomalia",
                     "sections": [
                         {
-                            "title": "Alertas Manglar C.R.A.",
+                            "title": "Tipo de anomalia",
                             "rows": rows,
                         }
                     ],
                 },
-            },
-        }
-        return await self._post_message(conversation_id, payload)
-
-    async def send_quick_buttons(
-        self,
-        conversation_id: str,
-        text: str,
-        buttons: List[Dict[str, str]],
-        account_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """Envía hasta 3 botones de respuesta rápida en WhatsApp."""
-        formatted_buttons = [
-            {"type": "reply", "id": b["id"], "title": b["title"][:20]}
-            for b in buttons[:3]
-        ]
-        payload: Dict[str, Any] = {
-            "accountId": account_id or self.default_account_id,
-            "message": text,
-            "interactive": {
-                "type": "button",
-                "body": {"text": text},
-                "buttons": formatted_buttons,
             },
         }
         return await self._post_message(conversation_id, payload)
@@ -172,28 +135,14 @@ class ZernioClient:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(url, json=payload, headers=self._headers())
             if resp.status_code >= 400:
-                logger.error("Error enviando mensaje a Zernio (%s): %s", resp.status_code, resp.text)
-                # Si falla el formato interactivo en alguna versión, hacemos fallback automático a texto limpio
-                if "interactive" in payload:
-                    logger.info("Ejecutando fallback a texto plano para %s", conversation_id)
-                    fallback_payload = {
-                        "accountId": payload["accountId"],
-                        "message": self._build_text_fallback(payload),
+                logger.warning("Respuesta %s en primer intento interactive (%s). Reintentando con campo message incluido.", resp.status_code, resp.text)
+                if "interactive" in payload and "message" not in payload:
+                    payload_with_msg = {
+                        **payload,
+                        "message": payload["interactive"].get("body", {}).get("text", "Selecciona una opcion:"),
                     }
-                    resp2 = await client.post(url, json=fallback_payload, headers=self._headers())
-                    return resp2.json() if resp2.content else {"status": resp2.status_code}
+                    resp2 = await client.post(url, json=payload_with_msg, headers=self._headers())
+                    if resp2.status_code < 400:
+                        return resp2.json() if resp2.content else {"status": resp2.status_code}
+                    logger.error("Error enviando lista interactiva a Zernio (%s): %s", resp2.status_code, resp2.text)
             return resp.json() if resp.content else {"status": resp.status_code}
-
-    @staticmethod
-    def _build_text_fallback(payload: Dict[str, Any]) -> str:
-        base_msg = payload.get("message", "")
-        interactive = payload.get("interactive", {})
-        if interactive.get("type") == "list":
-            rows = interactive.get("action", {}).get("sections", [{}])[0].get("rows", [])
-            options = "\n".join(f"*{i+1}.* {r['title']} — _{r.get('description', '')}_" for i, r in enumerate(rows))
-            return f"{base_msg}\n\n{options}"
-        if interactive.get("type") == "button":
-            btns = interactive.get("buttons", [])
-            options = " | ".join(f"[{b['title']}]" for b in btns)
-            return f"{base_msg}\n\nOpciones: {options}"
-        return base_msg

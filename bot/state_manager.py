@@ -144,14 +144,16 @@ class StateManager:
             return None
         clean = text.strip().lower()
 
+        # 1. Por ID o título exacto del desplegable
         for cat in ALERT_CATEGORIES:
             if clean == cat["id"].lower() or clean == cat["title"].lower() or cat["title"].lower() in clean:
                 return cat
 
-        if clean.isdigit():
-            idx = int(clean) - 1
-            if 0 <= idx < len(ALERT_CATEGORIES):
-                return ALERT_CATEGORIES[idx]
+        # 2. Por palabras clave en una descripción libre
+        for cat in ALERT_CATEGORIES:
+            for kw in cat.get("keywords", []):
+                if kw in clean:
+                    return cat
 
         return None
 
