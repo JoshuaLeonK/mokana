@@ -4,32 +4,26 @@
   document.documentElement.classList.add("js-ready");
 
   const panelType = document.body.dataset.panel || "cra"; // "cra" | "empresa"
-  const SUBSCRIBER_ZONES = new Set(["zone_mallorquin", "zone_balboa"]);
-  const SUBSCRIBER_SEVERITIES = new Set(["CRÍTICA", "ALTA"]);
 
-  // Map percentage coordinates for the 5 official C.R.A Atlántico zones on relieve.jpg
+  // Coordenadas porcentuales sobre relieve.jpg (Atlántico C.R.A)
   const ZONE_COORDS = {
     zone_mallorquin: { x: 78, y: 21, label: "Ciénaga de Mallorquín" },
-    zone_balboa: { x: 64, y: 38, label: "Puerto Velero / Balboa" },
-    zone_tubara: { x: 56, y: 45, label: "Tubarà / Playa Mendoza" },
+    zone_balboa: { x: 64, y: 38, label: "Puerto Colombia" },
+    zone_tubara: { x: 56, y: 45, label: "Tubará" },
     zone_juan_acosta: { x: 46, y: 58, label: "Juan de Acosta" },
     zone_totumo: { x: 32, y: 74, label: "Ciénaga del Totumo" },
   };
 
-  // Zero hardcoded dummy alerts — populated strictly from live Bot API + SSE
   let allReports = [];
   let subscribers = [];
 
   const state = {
     view: "dashboard",
     search: "",
-    severityFilter: null, // "CRÍTICA" | "ALTA" | "MEDIA" | "BAJA" | null
-    sseConnected: false,
-    lastBotEventAt: null,
+    severityFilter: null,
   };
 
-  // DOM helpers
-  const contentEl = document.getElementById("main-content");
+  // Navegación (5 vistas — sin Mapa en vivo aparte)
   const navButtons = document.querySelectorAll(".nav-item[data-view]");
   const viewPanels = document.querySelectorAll(".view-panel");
   const sidebar = document.getElementById("sidebar");
@@ -44,8 +38,6 @@
     viewPanels.forEach((panel) => {
       panel.dataset.active = String(panel.id === `view-${viewName}`);
     });
-    // Pure full-bleed map mode for "Mapa en vivo" (zero padding, zero extra UI)
-    contentEl.dataset.fullbleed = String(viewName === "mapa");
     sidebar.dataset.open = "false";
     menuToggle.setAttribute("aria-expanded", "false");
   }
@@ -61,7 +53,7 @@
     menuToggle.setAttribute("aria-expanded", String(!open));
   });
 
-  // Normalize severity string from Bot API (Gemini 2.5 Flash)
+  // Helpers de formato limpio para Radicado, Zona, Anomalía, Prioridad e Informe
   function normSeverity(report) {
     const raw = (report?.cra_technical_report?.nivel_severidad || "MEDIA").toUpperCase();
     if (raw.includes("CRIT") || raw.includes("CRÍT")) return "CRÍTICA";
@@ -70,48 +62,71 @@
     return "MEDIA";
   }
 
-  function getCoords(report) {
-    const zId = report?.location?.zone_id || "zone_mallorquin";
-    if (ZONE_COORDS[zId]) return ZONE_COORDS[zId];
-    return { x: 64, y: 40, label: report?.location?.zone_title || "Atlántico" };
+  function cleanText(str) {
+    return String(str || "")
+      .replace(/^[\p{Emoji_Presentation}\p{Extended_Pictographic}\s]+/gu, "")
+      .trim();
   }
 
-  // Filter reports by Tenant (CRA sees all; Empresa sees contracted zones + ALTA/CRÍTICA)
+  function formatReport(r) {
+    const tech = r.cra_technical_report || {};
+    const radicado = r.id || "Sin radicado";
+    const zona = r.location?.zone_title || ZONE_COORDS[r.location?.zone_id]?.label || "Atlántico";
+    const anomalia =
+      cleanText(r.incident?.category_title) ||
+      cleanText(tech.subcategoria_tecnica_cra) ||
+      "Incidente ambiental";
+    const sev = normSeverity(r);
+    const riesgo = Number(tech.indice_riesgo_ambiental ?? 0);
+    const prioridad = `${sev} (Riesgo ${riesgo}/100)`;
+    const informe =
+      cleanText(tech.titulo_hallazgo) ||
+      cleanText(r.incident?.citizen_description) ||
+      `Incidente de ${anomalia} reportado en ${zona}.`;
+
+    return { radicado, zona, anomalia, sev, riesgo, prioridad, informe, imageUrl: r.incident?.image_url || "" };
+  }
+
+  function getCoords(r) {
+    const zId = r?.location?.zone_id || "zone_mallorquin";
+    if (ZONE_COORDS[zId]) return ZONE_COORDS[zId];
+    return { x: 64, y: 40, label: r?.location?.zone_title || "Atlántico" };
+  }
+
+  // Aislamiento Empresa: SOLO Ciénaga de Mallorquín y Puerto Colombia
+  function isPaidEmpresaSector(r) {
+    const zId = String(r?.location?.zone_id || "").toLowerCase();
+    const zTitle = String(r?.location?.zone_title || "").toLowerCase();
+    return (
+      zId === "zone_mallorquin" ||
+      zId === "zone_balboa" ||
+      zTitle.includes("mallorqu") ||
+      zTitle.includes("puerto colombia") ||
+      zTitle.includes("balboa") ||
+      zTitle.includes("salgar")
+    );
+  }
+
   function getTenantReports() {
-    return allReports.filter((r) => {
-      if (panelType === "empresa") {
-        const zId = r?.location?.zone_id || "";
-        const sev = normSeverity(r);
-        if (!SUBSCRIBER_ZONES.has(zId)) return false;
-        if (!SUBSCRIBER_SEVERITIES.has(sev)) return false;
-      }
-      return true;
-    });
+    if (panelType === "empresa") {
+      return allReports.filter(isPaidEmpresaSector);
+    }
+    return allReports;
   }
 
   function getFilteredReports(ignoreSeverity = false) {
     return getTenantReports().filter((r) => {
-      const sev = normSeverity(r);
-      if (!ignoreSeverity && state.severityFilter && sev !== state.severityFilter) return false;
+      const f = formatReport(r);
+      if (!ignoreSeverity && state.severityFilter && f.sev !== state.severityFilter) return false;
       if (state.search) {
-        const hay = [
-          r.id,
-          r.location?.zone_title,
-          r.incident?.category_title,
-          r.incident?.citizen_description,
-          r.cra_technical_report?.titulo_hallazgo,
-          sev,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+        const hay = `${f.radicado} ${f.zona} ${f.anomalia} ${f.prioridad} ${f.informe}`.toLowerCase();
         if (!hay.includes(state.search)) return false;
       }
       return true;
     });
   }
 
-  // Pan & Zoom controller
+  // Pan & Zoom en Modal Completo del Mapa
   function attachPanZoom(viewportId, stageId, zoomInId, zoomOutId, resetId) {
     const viewport = document.getElementById(viewportId);
     const stage = document.getElementById(stageId);
@@ -124,9 +139,9 @@
     let sx = 0;
     let sy = 0;
 
-    const zIn = zoomInId ? document.getElementById(zoomInId) : null;
-    const zOut = zoomOutId ? document.getElementById(zoomOutId) : null;
-    const zReset = resetId ? document.getElementById(resetId) : null;
+    const zIn = document.getElementById(zoomInId);
+    const zOut = document.getElementById(zoomOutId);
+    const zReset = document.getElementById(resetId);
 
     function apply() {
       const mx = (viewport.clientWidth * (scale - 1)) / 2;
@@ -181,23 +196,34 @@
     return { reset: () => setZoom(1) };
   }
 
-  attachPanZoom("dash-map-viewport", "dash-map-stage", "zoom-in", "zoom-out", "zoom-reset");
-  attachPanZoom("pure-map-viewport", "pure-map-stage", null, null, null);
   const dialogPan = attachPanZoom("dialog-map-viewport", "dialog-map-stage", "dialog-zoom-in", "dialog-zoom-out", "dialog-zoom-reset");
 
-  // Maximize / Minimize Map Dialog
+  // Abrir Modal Completo al hacer clic en el mapa del Dashboard o en "Ampliar mapa"
   const mapDialog = document.getElementById("map-dialog");
-  document.getElementById("btn-maximize-map").addEventListener("click", () => {
+  const dashMapViewport = document.getElementById("dash-map-viewport");
+  const openMapBtn = document.getElementById("btn-open-map-modal");
+
+  function openMapModal() {
     dialogPan.reset();
     renderAllPins();
+    renderMapModalSidebar();
     mapDialog.showModal();
+  }
+
+  dashMapViewport.addEventListener("click", openMapModal);
+  dashMapViewport.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openMapModal();
+    }
   });
+  openMapBtn.addEventListener("click", openMapModal);
   document.getElementById("btn-minimize-map").addEventListener("click", () => mapDialog.close());
   mapDialog.addEventListener("click", (e) => {
     if (e.target === mapDialog) mapDialog.close();
   });
 
-  // Read-only AI Technical Report Dialog
+  // Modal de Detalle limpio: Radicado, Zona, Anomalía, Prioridad, Informe
   const detailDialog = document.getElementById("detail-dialog");
   document.getElementById("btn-close-detail").addEventListener("click", () => detailDialog.close());
   detailDialog.addEventListener("click", (e) => {
@@ -205,81 +231,141 @@
   });
 
   function openReportDetail(r) {
-    const tech = r.cra_technical_report || {};
-    const sev = normSeverity(r);
-    document.getElementById("detail-title").textContent = `${r.id} (${sev})`;
+    const f = formatReport(r);
+    document.getElementById("detail-title").textContent = `Radicado: ${f.radicado}`;
     const body = document.getElementById("detail-body");
-    const species = Array.isArray(tech.especies_mangle_riesgo) ? tech.especies_mangle_riesgo.join(", ") : "Sin especificar";
-    const photoHtml = r.incident?.image_url
-      ? `<img class="detail-photo" src="${r.incident.image_url}" alt="Evidencia del reporte" />`
+    const photoHtml = f.imageUrl
+      ? `<img class="detail-photo" src="${f.imageUrl}" alt="Evidencia de ${f.radicado}" />`
       : "";
 
     body.innerHTML = `
       ${photoHtml}
       <div class="ruled-list">
         <div class="ruled-row">
-          <span class="ruled-copy"><span class="ruled-title">Hallazgo técnico IA</span><span class="ruled-desc">${tech.titulo_hallazgo || r.incident?.citizen_description || "Sin descripción"}</span></span>
-          <span class="badge badge--${sev}">${sev}</span>
+          <span class="ruled-title">Radicado</span>
+          <span class="num">${f.radicado}</span>
         </div>
         <div class="ruled-row">
-          <span class="ruled-copy"><span class="ruled-title">Sector</span><span class="ruled-desc">${r.location?.zone_title || r.location?.zone_id || "Atlántico"}</span></span>
-          <span class="num">${tech.indice_riesgo_ambiental ?? 0}<span class="u">/100 riesgo</span></span>
+          <span class="ruled-title">Zona</span>
+          <span>${f.zona}</span>
         </div>
         <div class="ruled-row">
-          <span class="ruled-copy"><span class="ruled-title">Confianza Agente IA (Gemini 2.5 Flash)</span><span class="ruled-desc">${tech.coherencia_foto_descripcion || "Evaluado automáticamente por el bot"}</span></span>
-          <span class="num">${tech.puntaje_confianza_ia ?? 0}<span class="u">%</span></span>
+          <span class="ruled-title">Anomalía</span>
+          <span>${f.anomalia}</span>
         </div>
         <div class="ruled-row">
-          <span class="ruled-copy"><span class="ruled-title">Subcategoría C.R.A</span><span class="ruled-desc">${tech.subcategoria_tecnica_cra || r.incident?.category_title || "General"}</span></span>
-          <span class="ruled-desc">SLA ${tech.sla_tiempo_respuesta_horas ?? 6} h</span>
+          <span class="ruled-title">Prioridad</span>
+          <span class="badge badge--${f.sev}">${f.prioridad}</span>
         </div>
         <div class="ruled-row">
-          <span class="ruled-copy"><span class="ruled-title">Especies en riesgo</span><span class="ruled-desc">${species}</span></span>
-        </div>
-        <div class="ruled-row">
-          <span class="ruled-copy"><span class="ruled-title">${panelType === "cra" ? "Acción recomendada C.R.A" : "Valor analítico B2B / ESG"}</span><span class="ruled-desc">${panelType === "cra" ? (tech.accion_recomendada_cra || "Monitoreo activo") : (tech.valor_analitico_b2b_academia || tech.accion_recomendada_cra || "Trazabilidad ESG")}</span></span>
-        </div>
-        <div class="ruled-row">
-          <span class="ruled-copy"><span class="ruled-title">Normativa aplicable</span><span class="ruled-desc">${tech.normativa_aplicable || "Resolución 1263 de 2018"}</span></span>
+          <span class="ruled-copy">
+            <span class="ruled-title">Informe</span>
+            <span class="ruled-desc">${f.informe}</span>
+          </span>
         </div>
       </div>
     `;
     detailDialog.showModal();
   }
 
-  // Render pins on compact dashboard map, pure live map, and maximized dialog map
-  function renderPinsInto(containerId) {
+  // Pines en el mapa del Dashboard y del Modal Completo (coloreados por prioridad de riesgo)
+  function renderPinsInto(containerId, openDetailOnClick) {
     const el = document.getElementById(containerId);
     if (!el) return;
     const items = getFilteredReports(true);
     el.innerHTML = "";
 
     items.forEach((r) => {
+      const f = formatReport(r);
       const pos = getCoords(r);
-      const sev = normSeverity(r);
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "map-pin";
-      btn.dataset.severity = sev;
+      btn.dataset.severity = f.sev;
       btn.style.left = `${pos.x}%`;
       btn.style.top = `${pos.y}%`;
-      btn.setAttribute("aria-label", `${r.location?.zone_title || pos.label}: ${sev}`);
+      btn.setAttribute("aria-label", `${f.zona}: ${f.prioridad}`);
       btn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C7.58 2 4 5.58 4 10c0 5.25 8 12 8 12s8-6.75 8-12c0-4.42-3.58-8-8-8Z" fill="currentColor" stroke="#163a52" stroke-width="1.5"/><circle cx="12" cy="10" r="3" fill="#ffffff"/></svg>`;
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        openReportDetail(r);
-      });
+      if (openDetailOnClick) {
+        btn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openReportDetail(r);
+        });
+      }
       el.appendChild(btn);
     });
   }
 
   function renderAllPins() {
-    renderPinsInto("dash-map-pins");
-    renderPinsInto("pure-map-pins");
-    renderPinsInto("dialog-map-pins");
+    renderPinsInto("dash-map-pins", false);
+    renderPinsInto("dialog-map-pins", true);
   }
 
-  // Render Dashboard Option 2 (Executive Bands)
+  function renderMapModalSidebar() {
+    const list = document.getElementById("map-modal-alerts-list");
+    if (!list) return;
+    const items = getTenantReports();
+    list.innerHTML = "";
+
+    if (!items.length) {
+      list.innerHTML = `<span class="ruled-desc">Sin alertas activas en el mapa.</span>`;
+      return;
+    }
+
+    items.forEach((r) => {
+      const f = formatReport(r);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "map-alert-btn";
+      btn.innerHTML = `
+        <span class="ruled-copy">
+          <span class="ruled-title">${f.zona} (${f.radicado})</span>
+          <span class="ruled-desc">${f.anomalia}</span>
+        </span>
+        <span class="badge badge--${f.sev}">${f.sev}</span>
+      `;
+      btn.addEventListener("click", () => openReportDetail(r));
+      list.appendChild(btn);
+    });
+  }
+
+  // Filas limpias reutilizables para Últimas 10 alertas (Dashboard) y Gestión de Alertas
+  function renderRowsInto(items, tbodyId, emptyId, wrapId) {
+    const tbody = document.getElementById(tbodyId);
+    const emptyBox = document.getElementById(emptyId);
+    const wrap = document.getElementById(wrapId);
+    if (!tbody || !emptyBox || !wrap) return;
+
+    if (!items.length) {
+      wrap.style.display = "none";
+      emptyBox.style.display = "grid";
+      return;
+    }
+
+    emptyBox.style.display = "none";
+    wrap.style.display = "block";
+    tbody.innerHTML = "";
+
+    items.forEach((r) => {
+      const f = formatReport(r);
+      const tr = document.createElement("tr");
+      if (f.sev === "CRÍTICA") tr.className = "row--critical";
+      else if (f.sev === "ALTA") tr.className = "row--high";
+
+      tr.innerHTML = `
+        <td class="num">${f.radicado}</td>
+        <td><strong>${f.zona}</strong></td>
+        <td>${f.anomalia}</td>
+        <td><span class="badge badge--${f.sev}">${f.prioridad}</span></td>
+        <td>${f.informe}</td>
+        <td><button type="button" class="btn-line">Ver detalle</button></td>
+      `;
+      tr.querySelector("button").addEventListener("click", () => openReportDetail(r));
+      tbody.appendChild(tr);
+    });
+  }
+
+  // Dashboard: Estado compacto + Últimas 10 alertas
   function renderDashboard() {
     const items = getTenantReports();
     const maxRisk = items.length
@@ -290,27 +376,16 @@
     document.getElementById("dash-max-risk").innerHTML = `${maxRisk}<span class="u">/100</span>`;
     document.getElementById("nav-alert-count").textContent = String(items.length);
 
-    const lastAiEl = document.getElementById("dash-last-ai");
-    const lastAiSub = document.getElementById("dash-last-ai-sub");
-    if (items.length > 0) {
-      const latest = items[0];
-      const conf = latest?.cra_technical_report?.puntaje_confianza_ia ?? 0;
-      lastAiEl.innerHTML = `${conf}<span class="u">% IA</span>`;
-      lastAiSub.textContent = `${latest.id} en ${latest.location?.zone_title || "Atlántico"}`;
-    } else {
-      lastAiEl.textContent = "En espera";
-      lastAiSub.textContent = state.sseConnected
-        ? "Conectado al canal SSE del Bot IA (0 alertas)"
-        : "Ejecuta prueba.bat para enviar alertas vía API";
-    }
-
     const bondsCount = document.getElementById("bonds-validated-count");
     if (bondsCount) {
       bondsCount.innerHTML = `${items.length}<span class="u">reportes</span>`;
     }
+
+    const latestTen = getFilteredReports(true).slice(0, 10);
+    renderRowsInto(latestTen, "dash-alerts-tbody", "dash-alerts-empty", "dash-alerts-table-wrap");
   }
 
-  // Render Gestión de Alertas Option 3 (4 Escalation Cards + Read-Only AI Monitoring Table)
+  // Gestión de Alertas: 4 tarjetas de escalamiento + tabla limpia
   const escCards = document.querySelectorAll(".esc-card[data-sev]");
   escCards.forEach((card) => {
     card.addEventListener("click", () => {
@@ -338,45 +413,10 @@
     });
 
     const filtered = getFilteredReports(false);
-    const tbody = document.getElementById("alerts-tbody");
-    const emptyBox = document.getElementById("alerts-empty");
-    const tableWrap = document.getElementById("alerts-table-wrap");
     document.getElementById("alerts-count-label").textContent = `${filtered.length} registros`;
-
-    if (!filtered.length) {
-      tableWrap.style.display = "none";
-      emptyBox.style.display = "grid";
-      return;
-    }
-
-    emptyBox.style.display = "none";
-    tableWrap.style.display = "block";
-    tbody.innerHTML = "";
-
-    filtered.forEach((r) => {
-      const sev = normSeverity(r);
-      const tech = r.cra_technical_report || {};
-      const tr = document.createElement("tr");
-      if (sev === "CRÍTICA") tr.className = "row--critical";
-      else if (sev === "ALTA") tr.className = "row--high";
-
-      const verdictText = tech.es_valida === false ? "Descartada por IA" : "Verificada por IA";
-      tr.innerHTML = `
-        <td class="num">${r.id}</td>
-        <td><strong>${r.location?.zone_title || r.location?.zone_id || "Atlántico"}</strong></td>
-        <td>${tech.titulo_hallazgo || r.incident?.citizen_description || "Reporte recibido"}</td>
-        <td><span class="badge badge--${sev}">${sev}</span></td>
-        <td class="num">${tech.indice_riesgo_ambiental ?? 0}<span class="u">/100</span></td>
-        <td>${verdictText} (${tech.puntaje_confianza_ia ?? 0}%)</td>
-        <td><span class="badge badge--info">${r.status || "RECIBIDA"}</span></td>
-        <td><button type="button" class="btn-line" data-open-id="${r.id}">Ver informe IA</button></td>
-      `;
-      tr.querySelector("button").addEventListener("click", () => openReportDetail(r));
-      tbody.appendChild(tr);
-    });
+    renderRowsInto(filtered, "alerts-tbody", "alerts-empty", "alerts-table-wrap");
   }
 
-  // Render Subscribers (CRA view connected to GET /api/subscribers)
   function renderSubscribers() {
     const tbody = document.getElementById("tenants-tbody");
     if (!tbody) return;
@@ -398,7 +438,7 @@
     });
   }
 
-  // Unified Export Center (CSV, GeoJSON, Print/PDF)
+  // Exportar (CSV, GeoJSON, PDF)
   function downloadFile(filename, content, mime) {
     const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
@@ -410,16 +450,14 @@
   }
 
   document.getElementById("exp-csv").addEventListener("click", () => {
-    const items = getTenantReports();
-    const header = ["ID", "Sector", "Hallazgo", "Severidad", "Indice_Riesgo", "Confianza_IA%", "Estado"];
-    const rows = items.map((r) => [
-      r.id,
-      `"${(r.location?.zone_title || "").replace(/"/g, "'")}"`,
-      `"${(r.cra_technical_report?.titulo_hallazgo || r.incident?.citizen_description || "").replace(/"/g, "'")}"`,
-      normSeverity(r),
-      r.cra_technical_report?.indice_riesgo_ambiental ?? 0,
-      r.cra_technical_report?.puntaje_confianza_ia ?? 0,
-      r.status || "",
+    const items = getTenantReports().map(formatReport);
+    const header = ["Radicado", "Zona", "Anomalia", "Prioridad", "Informe"];
+    const rows = items.map((f) => [
+      f.radicado,
+      `"${f.zona.replace(/"/g, "'")}"`,
+      `"${f.anomalia.replace(/"/g, "'")}"`,
+      `"${f.prioridad}"`,
+      `"${f.informe.replace(/"/g, "'")}"`,
     ]);
     downloadFile(`mokana-${panelType}-alertas.csv`, [header.join(","), ...rows.map((r) => r.join(","))].join("\n"), "text/csv;charset=utf-8;");
   });
@@ -428,75 +466,63 @@
     const items = getTenantReports();
     const fc = {
       type: "FeatureCollection",
-      features: items.map((r) => ({
-        type: "Feature",
-        properties: {
-          id: r.id,
-          sector: r.location?.zone_title || "",
-          severidad: normSeverity(r),
-          indice_riesgo: r.cra_technical_report?.indice_riesgo_ambiental ?? 0,
-          confianza_ia: r.cra_technical_report?.puntaje_confianza_ia ?? 0,
-        },
-        geometry: {
-          type: "Point",
-          coordinates: [Number(r.location?.lng || -74.8461), Number(r.location?.lat || 11.0458)],
-        },
-      })),
+      features: items.map((r) => {
+        const f = formatReport(r);
+        return {
+          type: "Feature",
+          properties: {
+            radicado: f.radicado,
+            zona: f.zona,
+            anomalia: f.anomalia,
+            prioridad: f.prioridad,
+            informe: f.informe,
+          },
+          geometry: {
+            type: "Point",
+            coordinates: [Number(r.location?.lng || -74.8461), Number(r.location?.lat || 11.0458)],
+          },
+        };
+      }),
     };
     downloadFile(`mokana-${panelType}-alertas.geojson`, JSON.stringify(fc, null, 2), "application/geo+json;charset=utf-8;");
   });
 
   document.getElementById("exp-pdf").addEventListener("click", () => window.print());
 
-  // Search
   document.getElementById("search-global").addEventListener("input", (e) => {
     state.search = e.target.value.trim().toLowerCase();
     renderAll();
   });
 
-  // Network & Bot API SSE Status
   const netChip = document.getElementById("net-status");
   const netLabel = document.getElementById("net-label");
-  const botStatusEl = document.getElementById("bot-api-status");
-
-  function updateStatusUI() {
+  function updateNetwork() {
     const offline = !navigator.onLine;
     netChip.dataset.offline = String(offline);
-    if (offline) {
-      netLabel.textContent = "Sin conexión";
-      if (botStatusEl) botStatusEl.textContent = "Bot IA: Sin red (caché local)";
-    } else if (state.sseConnected) {
-      netLabel.textContent = "Bot IA en vivo";
-      if (botStatusEl) botStatusEl.textContent = "Bot IA: Conectado (SSE en vivo)";
-    } else {
-      netLabel.textContent = "En línea";
-      if (botStatusEl) botStatusEl.textContent = "Bot IA: Sincronizado vía API";
-    }
+    netLabel.textContent = offline ? "Sin conexión" : "En línea";
   }
-
-  window.addEventListener("online", updateStatusUI);
-  window.addEventListener("offline", updateStatusUI);
+  window.addEventListener("online", updateNetwork);
+  window.addEventListener("offline", updateNetwork);
 
   function renderAll() {
     renderDashboard();
     renderAllPins();
+    renderMapModalSidebar();
     renderAlertas();
     renderSubscribers();
-    updateStatusUI();
+    updateNetwork();
   }
 
-  // Live API Fetch + Real-Time SSE Stream (https://mokana.joshual.tech proxied via /api/*)
+  // Carga en vivo desde API + canal SSE
   async function loadFromBotApi() {
     try {
       const res = await fetch("/api/reports", { headers: { Accept: "application/json" } });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data.reports)) {
-          allReports = data.reports;
-        }
+        if (Array.isArray(data.reports)) allReports = data.reports;
       }
     } catch {
-      // Keep clean 0-alert state if offline or API unreachable
+      // Mantiene estado limpio si no hay red
     }
 
     if (panelType === "cra") {
@@ -507,7 +533,7 @@
           subscribers = Array.isArray(sData) ? sData : (sData.subscribers || []);
         }
       } catch {
-        // Ignore when offline
+        // Ignora sin red
       }
     }
     renderAll();
@@ -517,44 +543,29 @@
     if (typeof EventSource === "undefined") return;
     try {
       const es = new EventSource("/api/events/stream");
-      es.onopen = () => {
-        state.sseConnected = true;
-        updateStatusUI();
-      };
       es.onmessage = (e) => {
         try {
           const payload = JSON.parse(e.data);
           if (payload.event === "report.created" && payload.data) {
-            const exists = allReports.some((r) => r.id === payload.data.id);
-            if (!exists) allReports.unshift(payload.data);
+            if (!allReports.some((r) => r.id === payload.data.id)) allReports.unshift(payload.data);
             renderAll();
           } else if (payload.event === "report.updated" && payload.data) {
             const idx = allReports.findIndex((r) => r.id === payload.data.id);
             if (idx !== -1) allReports[idx] = payload.data;
             else allReports.unshift(payload.data);
             renderAll();
-          } else if (payload.event === "subscriber.created" && payload.data) {
-            subscribers.unshift(payload.data);
-            renderSubscribers();
           }
         } catch {
-          // Ignore keepalive heartbeats
+          // Ignora heartbeats
         }
       };
-      es.onerror = () => {
-        state.sseConnected = false;
-        updateStatusUI();
-      };
     } catch {
-      state.sseConnected = false;
+      // Sin soporte SSE
     }
   }
 
-  // Manual refresh button for instant verification after prueba.bat
   const refreshBtn = document.getElementById("btn-refresh-api");
-  if (refreshBtn) {
-    refreshBtn.addEventListener("click", () => loadFromBotApi());
-  }
+  if (refreshBtn) refreshBtn.addEventListener("click", () => loadFromBotApi());
 
   renderAll();
   loadFromBotApi();
