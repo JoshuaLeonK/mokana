@@ -11,7 +11,7 @@ ZERNIO_BASE_URL = os.getenv("ZERNIO_BASE_URL", "https://zernio.com/api/v1").rstr
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-PORT = int(os.getenv("PORT", "8000"))
+PORT = int(os.getenv("PORT", "8089"))
 
 # Zonas de Manglar del Departamento del Atlántico
 MANGROVE_ZONES = [
