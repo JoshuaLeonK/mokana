@@ -781,3 +781,59 @@ async def update_notification_settings(body: NotificationSettingsUpdate) -> Dict
         "notify_whatsapp_on_status_change": updated.get("notify_whatsapp_on_status_change", True),
         "has_resend_api_key": bool(updated.get("resend_api_key")),
     }
+
+
+@app.post("/api/settings/test-email")
+async def test_email_dispatch(to_email: str = Query(default="adalbertoleonk@gmail.com")) -> Dict[str, Any]:
+    """Dispara un correo de prueba inmediato con la plantilla de Mokana para verificar la conexión con Resend."""
+    sample_report = {
+        "id": "MKN-2026-TEST",
+        "created_at": "2026-11-27T20:20:00Z",
+        "location": {
+            "zone_id": "zone_mallorquin",
+            "zone_title": "Cienaga de Mallorquin",
+            "lat": 11.0458,
+            "lng": -74.8461,
+        },
+        "incident": {
+            "category_id": "alert_erosion",
+            "category_title": "Erosion o perdida suelo",
+            "citizen_description": "Prueba de sistema Mokana: socavacion y perdida de sedimento en la zona de raices de mangle.",
+            "image_url": f"{PUBLIC_BASE_URL}/static/mokana-logo.jpg",
+        },
+        "cra_technical_report": {
+            "es_valida": True,
+            "puntaje_confianza_ia": 96,
+            "nivel_severidad": "ALTA",
+            "indice_riesgo_ambiental": 84,
+            "subcategoria_tecnica_cra": "Erosion Costera y Desestabilizacion de Sustrato de Manglar",
+            "dependencia_responsable_cra": "Subdireccion de Gestion Ambiental y Ecosistemas Costeros C.R.A.",
+            "sla_tiempo_respuesta_horas": 6,
+            "titulo_hallazgo": "Erosion activa en borde estuarino de Cienaga de Mallorquin",
+            "coherencia_foto_descripcion": "Verificacion exitosa del motor multimodal de Mokana.",
+            "hallazgo_visual": "Evidencia de socavacion en borde costero y exposicion radicular.",
+            "especies_mangle_riesgo": ["Rhizophora mangle (Mangle rojo)", "Avicennia germinans (Mangle negro)"],
+            "parametros_fisicoquimicos_alterados": ["Solidos Suspendidos Totales (SST)", "Turbidez", "Estabilidad de sedimento"],
+            "hipotesis_ambiental_quimica": "Alteracion hidrodinamica y perdida de suelo que compromete la fijacion del manglar.",
+            "normativa_aplicable": "Resolucion 1263 de 2018 - Zonificacion de Manglares del Atlantico",
+            "accion_recomendada_cra": "Inspeccion tecnica de control de erosion y restauracion con propagulos de Rhizophora mangle.",
+            "valor_analitico_b2b_academia": "Dato clave para modelos de retroceso de linea de costa y proteccion de infraestructura costera.",
+            "etiquetas_datos": ["#ErosionCostera", "#ManglarAtlantico", "#CarbonoAzul", "#AlertaCRA"],
+        },
+    }
+    test_recipient = [
+        {
+            "id": "sub_cra_test",
+            "name": "Adalberto Leon - Responsable C.R.A.",
+            "email": to_email,
+            "organization": "C.R.A. Atlantico",
+            "type": "CRA",
+            "zones": ["*"],
+            "categories": ["*"],
+            "min_severity": "BAJA",
+            "active": True,
+        }
+    ]
+    settings = state_mgr.get_settings()
+    deliveries = await mailer.dispatch_notifications(sample_report, test_recipient, settings)
+    return {"ok": True, "has_resend_api_key": bool(settings.get("resend_api_key")), "deliveries": deliveries}

@@ -84,6 +84,12 @@ ALERT_CATEGORIES = [
         "keywords": ["pez", "peces", "muerto", "mortandad", "fauna", "ave", "basura", "plastico", "residuo"],
     },
     {
+        "id": "alert_erosion",
+        "title": "Erosion o perdida suelo",
+        "description": "Erosion costera, socavacion o caida de orilla",
+        "keywords": ["erosion", "erosión", "socav", "orilla", "sedimento", "derrumbe", "costa", "playa", "suelo"],
+    },
+    {
         "id": "alert_otro",
         "title": "Otro incidente",
         "description": "Otra anomalia en el manglar",

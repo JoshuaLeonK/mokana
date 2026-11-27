@@ -57,6 +57,17 @@ class StateManager:
         if not os.path.exists(SUBSCRIBERS_FILE):
             with open(SUBSCRIBERS_FILE, "w", encoding="utf-8") as f:
                 json.dump(DEFAULT_SUBSCRIBERS, f, ensure_ascii=False, indent=2)
+        else:
+            # Asegurar que el correo de prueba de la C.R.A. (adalbertoleonk@gmail.com) esté presente aunque el archivo ya existiera
+            try:
+                with open(SUBSCRIBERS_FILE, "r", encoding="utf-8") as f:
+                    existing_subs = json.load(f)
+                if not any(s.get("email") == "adalbertoleonk@gmail.com" for s in existing_subs):
+                    existing_subs.insert(0, DEFAULT_SUBSCRIBERS[0])
+                    with open(SUBSCRIBERS_FILE, "w", encoding="utf-8") as f:
+                        json.dump(existing_subs, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
 
         if not os.path.exists(SETTINGS_FILE):
             default_settings = {
@@ -67,6 +78,17 @@ class StateManager:
             }
             with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
                 json.dump(default_settings, f, ensure_ascii=False, indent=2)
+        elif RESEND_API_KEY:
+            # Sincronizar RESEND_API_KEY desde .env si en settings_db.json había quedado vacía antes
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    curr_s = json.load(f)
+                if not curr_s.get("resend_api_key"):
+                    curr_s["resend_api_key"] = RESEND_API_KEY
+                    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                        json.dump(curr_s, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
 
     def get_session(self, conversation_id: str) -> Dict[str, Any]:
         if conversation_id not in self.sessions:

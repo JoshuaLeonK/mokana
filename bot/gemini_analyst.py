@@ -30,11 +30,12 @@ class TechnicalReportCRA(BaseModel):
         description=(
             "ID de la categoría de alerta que mejor corresponde a la imagen y el texto: "
             "'alert_tala' (Tala o relleno ilegal), 'alert_olor' (Agua con olor extrano), "
-            "'alert_color' (Agua con color raro), 'alert_fauna' (Fauna o basuras) o 'alert_otro' (Otro incidente)."
+            "'alert_color' (Agua con color raro), 'alert_fauna' (Fauna o basuras), "
+            "'alert_erosion' (Erosion o perdida suelo) o 'alert_otro' (Otro incidente)."
         )
     )
     categoria_inferida_titulo: str = Field(
-        description="Título limpio de la categoría inferida: 'Tala o relleno ilegal', 'Agua con olor extrano', 'Agua con color raro', 'Fauna o basuras' u 'Otro incidente'."
+        description="Título limpio de la categoría inferida: 'Tala o relleno ilegal', 'Agua con olor extrano', 'Agua con color raro', 'Fauna o basuras', 'Erosion o perdida suelo' u 'Otro incidente'."
     )
     puntaje_confianza_ia: int = Field(
         description="Puntaje de confianza y coherencia multimodal (0 a 100) entre la fotografía, el texto del ciudadano y la categoría seleccionada."
