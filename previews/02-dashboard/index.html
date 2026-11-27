@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel administrativo: Mokana</title>
+  <meta
+    name="description"
+    content="Panel administrativo multitenant de Mokana para monitoreo satelital de manglares, matriz Riesgo por Impacto, validación anti-sabotaje y exportación de informes."
+  />
+  <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Geologica:wght,CRSV,SHRP@200..500,0,0..100&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="./css/tokens.css" />
+  <link rel="stylesheet" href="./css/base.css" />
+  <link rel="stylesheet" href="./css/dashboard.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Barra lateral: 7 módulos funcionales -->
+    <aside id="sidebar" class="sidebar" aria-label="Navegación principal" data-open="false">
+      <div class="sidebar-brand">
+        <a class="brand-lockup" href="#resumen" aria-label="Mokana, inicio">
+          <img class="brand-isotipo" src="./assets/mokana-isotipo-verde.svg" alt="" width="34" height="34" />
+          <span class="brand-wordmark">Mokana</span>
+        </a>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-item" data-view="resumen" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="9" rx="1" />
+            <rect x="14" y="3" width="7" height="5" rx="1" />
+            <rect x="14" y="12" width="7" height="9" rx="1" />
+            <rect x="3" y="16" width="7" height="5" rx="1" />
+          </svg>
+          <span>Resumen</span>
+        </button>
+
+        <button type="button" class="nav-item" data-view="mapa">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
+            <line x1="9" y1="3" x2="9" y2="18" />
+            <line x1="15" y1="6" x2="15" y2="21" />
+          </svg>
+          <span>Mapa en vivo</span>
+        </button>
+
+        <button type="button" class="nav-item" data-view="validacion" data-role-only="cra">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
+          <span>Validación</span>
+          <span id="nav-pending-count" class="nav-count">3</span>
+        </button>
+
+        <button type="button" class="nav-item" data-view="alertas">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <span>Alertas</span>
+        </button>
+
+        <button type="button" class="nav-item" data-view="tenants" data-role-only="cra">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+          <span>Tenants y planes</span>
+        </button>
+
+        <button type="button" class="nav-item" data-view="suscripcion" data-role-only="subscriber" data-hidden-role="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <rect x="2" y="5" width="20" height="14" rx="2" />
+            <line x1="2" y1="10" x2="22" y2="10" />
+          </svg>
+          <span>Mi suscripción</span>
+        </button>
+
+        <button type="button" class="nav-item" data-view="bonos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
+            <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12" />
+          </svg>
+          <span>Bonos de carbono</span>
+        </button>
+
+        <button type="button" class="nav-item" data-view="exportar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          <span>Exportar informes</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-meta">
+          <span id="sidebar-user" class="user-name">Coordinación C.R.A</span>
+          <span id="sidebar-role" class="user-role">Acceso total</span>
+        </div>
+        <a class="btn-line btn-icon" href="../01-login/index.html" aria-label="Cerrar sesión" title="Cerrar sesión">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+        </a>
+      </div>
+    </aside>
+
+    <!-- Columna principal -->
+    <div class="main-area">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="menu-toggle" type="button" class="menu-btn" aria-label="Abrir menú" aria-expanded="false">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+
+          <div class="search-wrap">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input id="search-global" type="search" class="search-input" placeholder="Buscar sector o amenaza" aria-label="Buscar sector o amenaza" />
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <div id="net-status" class="status-chip" role="status" aria-live="polite" data-offline="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+              <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+              <line x1="12" y1="20" x2="12.01" y2="20" />
+            </svg>
+            <span id="net-label">En línea</span>
+          </div>
+
+          <button id="btn-sync-offline" type="button" class="btn-line" style="display: none">
+            Sincronizar cola
+          </button>
+
+          <div id="role-switch" class="role-switch" data-role="cra" role="group" aria-label="Vista por perfil">
+            <span class="role-indicator" aria-hidden="true"></span>
+            <button type="button" class="role-btn" data-role="cra" aria-pressed="true">C.R.A</button>
+            <button type="button" class="role-btn" data-role="subscriber" aria-pressed="false">Empresa</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="content">
+        <!-- VISTA 1: RESUMEN -->
+        <section id="view-resumen" class="view-panel" data-active="true" aria-labelledby="resumen-title">
+          <div class="page-head">
+            <div>
+              <h1 id="resumen-title" class="page-title">Monitoreo satelital de manglares</h1>
+              <p id="resumen-subtitle" class="page-subtitle">Cobertura global C.R.A del Atlántico con validación en tiempo real.</p>
+            </div>
+            <button id="btn-go-export" type="button" class="btn-pill">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Centro de exportación</span>
+            </button>
+          </div>
+
+          <!-- Franja KPI estilo Vantage con corner ticks -->
+          <div class="ticks">
+            <div class="kpi-strip">
+              <div class="kpi-cell">
+                <span id="kpi-1-label" class="kpi-label">Alertas validadas</span>
+                <div id="kpi-1-val" class="kpi-figure num">4<span class="u">activas</span></div>
+                <span id="kpi-1-note" class="kpi-note">Sin retraso de 3 semanas</span>
+              </div>
+              <div class="kpi-cell">
+                <span id="kpi-2-label" class="kpi-label">Máxima presión</span>
+                <div id="kpi-2-val" class="kpi-figure kpi-figure--alert num">16<span class="u">/16</span></div>
+                <span id="kpi-2-note" class="kpi-note">Ciénaga de Mallorquín</span>
+              </div>
+              <div class="kpi-cell">
+                <span id="kpi-3-label" class="kpi-label">Cola anti-sabotaje</span>
+                <div id="kpi-3-val" class="kpi-figure num">3<span class="u">pendientes</span></div>
+                <span id="kpi-3-note" class="kpi-note">Revisión C.R.A requerida</span>
+              </div>
+              <div class="kpi-cell">
+                <span id="kpi-4-label" class="kpi-label">Carbono en riesgo</span>
+                <div id="kpi-4-val" class="kpi-figure num">420<span class="u">tCO₂</span></div>
+                <span id="kpi-4-note" class="kpi-note">Sectores bajo alerta alta</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mapa compacto + Panel derecho adaptativo -->
+          <div class="split-grid">
+            <article class="ticks">
+              <div class="panel-head">
+                <h2 class="panel-title">Mapa georreferenciado C.R.A</h2>
+                <div class="toolbar-row">
+                  <button id="zoom-out" type="button" class="btn-line btn-icon" aria-label="Alejar mapa">-</button>
+                  <button id="zoom-reset" type="button" class="btn-line">100%</button>
+                  <button id="zoom-in" type="button" class="btn-line btn-icon" aria-label="Acercar mapa">+</button>
+                  <button id="btn-maximize-map" type="button" class="btn-line">Maximizar</button>
+                </div>
+              </div>
+
+              <div id="map-viewport" class="map-viewport" role="region" aria-label="Mapa de manglares del Atlántico">
+                <div id="map-stage" class="map-stage" data-dragging="false">
+                  <img class="map-base" src="./assets/map/relieve.jpg" alt="Relieve costero del Atlántico" width="691" height="641" draggable="false" />
+                  <img id="map-plan-img" class="map-overlay" src="./assets/map/plan.png" alt="" width="691" height="641" data-hidden="false" draggable="false" />
+                  <div id="map-pins" class="map-pins"></div>
+                </div>
+                <div id="map-popover" class="map-popover" role="status" aria-live="polite" data-open="false">
+                  <div class="panel-head" style="margin-bottom: 0">
+                    <strong id="popover-zone" class="ruled-title"></strong>
+                    <button id="popover-close" type="button" class="btn-line btn-icon" aria-label="Cerrar">×</button>
+                  </div>
+                  <span id="popover-threat" class="ruled-desc"></span>
+                  <span id="popover-score" class="ruled-desc num"></span>
+                </div>
+              </div>
+
+              <div class="map-legend">
+                <span class="legend-item"><span class="legend-swatch swatch--preservacion"></span>Preservación</span>
+                <span class="legend-item"><span class="legend-swatch swatch--restauracion"></span>Restauración</span>
+                <span class="legend-item"><span class="legend-swatch swatch--recuperacion"></span>Recuperación</span>
+                <span class="legend-item"><span class="legend-swatch swatch--rehabilitacion"></span>Rehabilitación</span>
+                <span class="legend-item"><span class="legend-swatch swatch--manglar"></span>Manglar probable</span>
+              </div>
+            </article>
+
+            <!-- Capas con Switches estilo Vantage + Resumen de acción -->
+            <article class="ticks">
+              <div class="panel-head">
+                <h2 class="panel-title">Capas activas del mapa</h2>
+              </div>
+              <div class="ruled-list">
+                <label class="ruled-row">
+                  <span class="ruled-copy">
+                    <span class="ruled-title">Plan de manejo C.R.A</span>
+                    <span class="ruled-desc">Zonificación costera oficial</span>
+                  </span>
+                  <span class="ruled-right">
+                    <span class="num ruled-desc">5 <span class="u">zonas</span></span>
+                    <input id="sw-plan" type="checkbox" class="v-switch" checked />
+                  </span>
+                </label>
+                <label class="ruled-row">
+                  <span class="ruled-copy">
+                    <span class="ruled-title">Calidad de agua</span>
+                    <span class="ruled-desc">Vertimientos y salinidad</span>
+                  </span>
+                  <span class="ruled-right">
+                    <span id="cnt-agua" class="num ruled-desc">2 <span class="u">alertas</span></span>
+                    <input id="sw-agua" type="checkbox" class="v-switch layer-cat" data-cat="agua" checked />
+                  </span>
+                </label>
+                <label class="ruled-row">
+                  <span class="ruled-copy">
+                    <span class="ruled-title">Incendios</span>
+                    <span class="ruled-desc">Anomalías térmicas satelitales</span>
+                  </span>
+                  <span class="ruled-right">
+                    <span id="cnt-incendio" class="num ruled-desc">1 <span class="u">alerta</span></span>
+                    <input id="sw-incendio" type="checkbox" class="v-switch layer-cat" data-cat="incendio" checked />
+                  </span>
+                </label>
+                <label class="ruled-row">
+                  <span class="ruled-copy">
+                    <span class="ruled-title">Presiones y tala</span>
+                    <span class="ruled-desc">Rellenos de borde y desmonte</span>
+                  </span>
+                  <span class="ruled-right">
+                    <span id="cnt-presion" class="num ruled-desc">1 <span class="u">alerta</span></span>
+                    <input id="sw-presion" type="checkbox" class="v-switch layer-cat" data-cat="presion" checked />
+                  </span>
+                </label>
+              </div>
+            </article>
+          </div>
+
+          <!-- Vista previa de impacto psicológico Riesgo x Impacto -->
+          <article class="ticks">
+            <div class="panel-head">
+              <h2 class="panel-title">Presión inmediata (Riesgo × Impacto)</h2>
+              <button type="button" class="btn-line" data-jump-view="alertas">Ver matriz 4×4</button>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Sector</th>
+                    <th scope="col">Amenaza</th>
+                    <th scope="col">Riesgo</th>
+                    <th scope="col">Índice</th>
+                    <th scope="col">Presión visual</th>
+                    <th scope="col">Carbono en riesgo</th>
+                    <th scope="col">Confianza</th>
+                  </tr>
+                </thead>
+                <tbody id="summary-alerts-tbody"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <!-- VISTA 2: MAPA EN VIVO + REGISTRO GEORREFERENCIADO OFFLINE -->
+        <section id="view-mapa" class="view-panel" data-active="false" aria-labelledby="mapa-live-title">
+          <div class="page-head">
+            <div>
+              <h1 id="mapa-live-title" class="page-title">Mapa en vivo y reporte georreferenciado</h1>
+              <p class="page-subtitle">Haz clic sobre el mapa del Atlántico para ubicar una nueva amenaza (funciona sin conexión).</p>
+            </div>
+          </div>
+
+          <div class="split-grid">
+            <article class="ticks">
+              <div class="panel-head">
+                <h2 class="panel-title">Territorio costero del Atlántico</h2>
+                <span id="picked-coords" class="ruled-desc num">Sin punto fijado</span>
+              </div>
+              <div id="live-map-viewport" class="map-viewport map-viewport--tall" role="region" aria-label="Mapa para ubicar reporte">
+                <div class="map-stage">
+                  <img class="map-base" src="./assets/map/relieve.jpg" alt="Relieve del Atlántico" width="691" height="641" draggable="false" />
+                  <img id="live-map-plan-img" class="map-overlay" src="./assets/map/plan.png" alt="" width="691" height="641" data-hidden="false" draggable="false" />
+                  <div id="live-map-pins" class="map-pins"></div>
+                </div>
+              </div>
+            </article>
+
+            <article class="ticks">
+              <div class="panel-head">
+                <h2 class="panel-title">Nuevo reporte georreferenciado</h2>
+              </div>
+              <form id="report-form" class="form-stack" novalidate>
+                <div class="field-group">
+                  <label class="field-label" for="rep-zone">Sector del manglar</label>
+                  <select id="rep-zone" class="field-select">
+                    <option value="Ciénaga de Mallorquín">Ciénaga de Mallorquín</option>
+                    <option value="Puerto Velero">Puerto Velero</option>
+                    <option value="Bocas de Ceniza">Bocas de Ceniza</option>
+                    <option value="Ciénaga del Totumo">Ciénaga del Totumo</option>
+                    <option value="Salgar">Salgar</option>
+                  </select>
+                </div>
+                <div class="field-group">
+                  <label class="field-label" for="rep-cat">Tipo de amenaza</label>
+                  <select id="rep-cat" class="field-select">
+                    <option value="agua">Calidad de agua</option>
+                    <option value="incendio">Incendio o anomalía térmica</option>
+                    <option value="presion">Presión urbana o tala</option>
+                  </select>
+                </div>
+                <div class="field-group">
+                  <label class="field-label" for="rep-desc">Situación observada</label>
+                  <input id="rep-desc" type="text" class="field-input" placeholder="Ej. Vertimiento de aguas residuales en borde norte" required />
+                </div>
+                <div class="split-grid split-grid--equal">
+                  <div class="field-group">
+                    <label class="field-label" for="rep-risk">Nivel de riesgo (1 a 4)</label>
+                    <select id="rep-risk" class="field-select">
+                      <option value="4">4 (Crítico)</option>
+                      <option value="3">3 (Alto)</option>
+                      <option value="2">2 (Moderado)</option>
+                      <option value="1">1 (Bajo)</option>
+                    </select>
+                  </div>
+                  <div class="field-group">
+                    <label class="field-label" for="rep-impact">Factor de impacto (1 a 4)</label>
+                    <select id="rep-impact" class="field-select">
+                      <option value="4">4 (Crítico)</option>
+                      <option value="3">3 (Alto)</option>
+                      <option value="2">2 (Moderado)</option>
+                      <option value="1">1 (Bajo)</option>
+                    </select>
+                  </div>
+                </div>
+                <p id="report-feedback" class="field-feedback" role="status" aria-live="polite"></p>
+                <button type="submit" class="btn-pill">Enviar reporte</button>
+              </form>
+            </article>
+          </div>
+        </section>
+
+        <!-- VISTA 3: VALIDACIÓN ANTI-SABOTAJE (SOLO C.R.A) -->
+        <section id="view-validacion" class="view-panel" data-active="false" data-role-only="cra" aria-labelledby="val-title">
+          <div class="page-head">
+            <div>
+              <h1 id="val-title" class="page-title">Validación anti-sabotaje</h1>
+              <p class="page-subtitle">Verificación de 4 capas antes de publicar alertas a empresas suscriptoras o portal abierto.</p>
+            </div>
+          </div>
+
+          <div class="split-grid">
+            <article class="ticks">
+              <div class="panel-head">
+                <h2 class="panel-title">Reportes pendientes</h2>
+              </div>
+              <div id="undo-bar" class="undo-bar" role="status" aria-live="polite" data-visible="false">
+                <span id="undo-text"></span>
+                <button id="btn-undo" type="button" class="btn-line">Deshacer</button>
+              </div>
+              <div id="queue-list"></div>
+            </article>
+
+            <article class="ticks">
+              <div class="panel-head">
+                <h2 class="panel-title">Bitácora de auditoría y sabotajes bloqueados</h2>
+              </div>
+              <div id="audit-log" class="ruled-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <!-- VISTA 4: ALERTAS + MATRIZ TÉRMICA 4x4 (IMPACTO PSICOLÓGICO) -->
+        <section id="view-alertas" class="view-panel" data-active="false" aria-labelledby="alertas-title">
+          <div class="page-head">
+            <div>
+              <h1 id="alertas-title" class="page-title">Matriz de Riesgo × Impacto</h1>
+              <p class="page-subtitle">Haz clic en una celda térmica para aislar amenazas según severidad y daño ecosistémico.</p>
+            </div>
+            <button id="btn-clear-matrix" type="button" class="btn-line">Ver todas las celdas</button>
+          </div>
+
+          <div class="split-grid">
+            <article class="ticks">
+              <div class="panel-head">
+                <h2 class="panel-title">Mapa térmico 4×4 (1 a 16)</h2>
+                <span id="matrix-active-label" class="ruled-desc">Filtro: todas</span>
+              </div>
+              <div id="matrix-grid" class="matrix-grid" role="grid" aria-label="Matriz de Riesgo por Impacto"></div>
+            </article>
+
+            <article class="ticks">
+              <div class="panel-head">
+                <h2 class="panel-title">Criterio de escalamiento</h2>
+              </div>
+              <div class="ruled-list">
+                <div class="ruled-row">
+                  <span class="ruled-copy">
+                    <span class="ruled-title">12 a 16 (Zona roja crítica)</span>
+                    <span class="ruled-desc">Despacho inmediato C.R.A y alerta a planes Esencial, Pro y Enterprise.</span>
+                  </span>
+                  <span class="badge badge--critical">Emergencia</span>
+                </div>
+                <div class="ruled-row">
+                  <span class="ruled-copy">
+                    <span class="ruled-title">8 a 11 (Zona ámbar alta)</span>
+                    <span class="ruled-desc">Intervención prioritaria y alerta en tiempo real a planes Pro y Enterprise.</span>
+                  </span>
+                  <span class="badge badge--high">Alto</span>
+                </div>
+                <div class="ruled-row">
+                  <span class="ruled-copy">
+                    <span class="ruled-title">4 a 7 (Zona moderada)</span>
+                    <span class="ruled-desc">Seguimiento satelital continuo y reporte semanal.</span>
+                  </span>
+                  <span class="badge badge--moderate">Moderado</span>
+                </div>
+                <div class="ruled-row">
+                  <span class="ruled-copy">
+                    <span class="ruled-title">1 a 3 (Preventivo)</span>
+                    <span class="ruled-desc">Registro base para trazabilidad y bonos de carbono Enterprise.</span>
+                  </span>
+                  <span class="badge badge--low">Bajo</span>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <article class="ticks">
+            <div class="panel-head">
+              <h2 class="panel-title">Registro de alertas activas</h2>
+              <span id="full-table-count" class="ruled-desc num"></span>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Sector</th>
+                    <th scope="col">Amenaza</th>
+                    <th scope="col">Riesgo</th>
+                    <th scope="col">Impacto</th>
+                    <th scope="col">Índice</th>
+                    <th scope="col">Presión visual</th>
+                    <th scope="col">Confianza</th>
+                  </tr>
+                </thead>
+                <tbody id="full-alerts-tbody"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <!-- VISTA 5A: TENANTS Y PLANES (SOLO C.R.A) -->
+        <section id="view-tenants" class="view-panel" data-active="false" data-role-only="cra" aria-labelledby="tenants-title">
+          <div class="page-head">
+            <div>
+              <h1 id="tenants-title" class="page-title">Tenants y suscripciones empresariales</h1>
+              <p class="page-subtitle">Control multitenant de planes contratados y sectores visibles por organización.</p>
+            </div>
+          </div>
+
+          <article class="ticks">
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Organización</th>
+                    <th scope="col">Tipo</th>
+                    <th scope="col">Plan</th>
+                    <th scope="col">Sectores habilitados</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="tenants-tbody"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <!-- VISTA 5B: MI SUSCRIPCIÓN (SOLO EMPRESA) -->
+        <section id="view-suscripcion" class="view-panel" data-active="false" data-role-only="subscriber" data-hidden-role="true" aria-labelledby="sub-title">
+          <div class="page-head">
+            <div>
+              <h1 id="sub-title" class="page-title">Mi suscripción empresarial</h1>
+              <p class="page-subtitle">Detalle del alcance contratado sobre el ecosistema de manglares del Atlántico.</p>
+            </div>
+          </div>
+
+          <article class="ticks">
+            <div class="ruled-list">
+              <div class="ruled-row">
+                <span class="ruled-copy"><span class="ruled-title">Plan actual</span><span class="ruled-desc">Alertas Alto y Crítico en tiempo real con exportación ejecutiva</span></span>
+                <span class="badge badge--low">Plan Pro activo</span>
+              </div>
+              <div class="ruled-row">
+                <span class="ruled-copy"><span class="ruled-title">Sectores cubiertos</span><span class="ruled-desc">Aislamiento multitenant configurado por C.R.A</span></span>
+                <span class="num">Ciénaga de Mallorquín, Puerto Velero</span>
+              </div>
+              <div class="ruled-row">
+                <span class="ruled-copy"><span class="ruled-title">Nivel mínimo de alerta</span><span class="ruled-desc">Índice Riesgo × Impacto igual o superior a 8/16</span></span>
+                <span class="num">8<span class="u">/16</span></span>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <!-- VISTA 6: BONOS DE CARBONO E INCENTIVOS -->
+        <section id="view-bonos" class="view-panel" data-active="false" aria-labelledby="bonos-title">
+          <div class="page-head">
+            <div>
+              <h1 id="bonos-title" class="page-title">Bonos de carbono e incentivos</h1>
+              <p class="page-subtitle">Motivantes de participación para empresas privadas y personas naturales.</p>
+            </div>
+          </div>
+
+          <div class="split-grid split-grid--equal">
+            <article class="ticks">
+              <div class="panel-head">
+                <h2 class="panel-title">Bonos de carbono empresariales</h2>
+              </div>
+              <div class="ruled-list">
+                <div class="ruled-row">
+                  <span class="ruled-copy"><span class="ruled-title">Stock trazable en sectores monitoreados</span><span class="ruled-desc">Respaldo para certificación ESG</span></span>
+                  <span class="kpi-figure num">1,280<span class="u">tCO₂</span></span>
+                </div>
+                <div class="ruled-row">
+                  <span class="ruled-copy"><span class="ruled-title">Biomasa salvaguardada por alertas tempranas</span><span class="ruled-desc">Respuesta en tiempo real vs 3 semanas</span></span>
+                  <span class="num">420<span class="u">tCO₂</span></span>
+                </div>
+              </div>
+            </article>
+
+            <article class="ticks">
+              <div class="panel-head">
+                <h2 class="panel-title">Bonos para personas naturales</h2>
+              </div>
+              <div class="ruled-list">
+                <div class="ruled-row">
+                  <span class="ruled-copy"><span class="ruled-title">Reportes ciudadanos validados</span><span class="ruled-desc">Cada reporte verificado suma incentivos locales</span></span>
+                  <span id="citizen-bonds-count" class="kpi-figure num">4<span class="u">bonos</span></span>
+                </div>
+                <div class="ruled-row">
+                  <span class="ruled-copy"><span class="ruled-title">Filtro anti-sabotaje activo</span><span class="ruled-desc">Solo reportes aprobados por C.R.A acreditan bonos</span></span>
+                  <span class="badge badge--low">Verificado</span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- VISTA 7: CENTRO ÚNICO DE EXPORTACIÓN E INFORMES -->
+        <section id="view-exportar" class="view-panel" data-active="false" aria-labelledby="export-title">
+          <div class="page-head">
+            <div>
+              <h1 id="export-title" class="page-title">Centro de exportación e informes</h1>
+              <p class="page-subtitle">Descarga datos técnicos y muestras ejecutivas filtradas según tu perfil actual.</p>
+            </div>
+          </div>
+
+          <article class="ticks">
+            <div class="panel-head">
+              <h2 class="panel-title">Formatos disponibles</h2>
+              <span id="export-scope-label" class="ruled-desc">Alcance: C.R.A (todos los sectores)</span>
+            </div>
+            <div class="export-grid">
+              <div class="export-option">
+                <div class="ruled-copy">
+                  <strong class="ruled-title">Tabla analítica CSV</strong>
+                  <span class="ruled-desc">Compatible con Excel y hojas de cálculo para auditoría de alertas y puntajes.</span>
+                </div>
+                <button id="exp-csv" type="button" class="btn-pill">Descargar CSV</button>
+              </div>
+              <div class="export-option">
+                <div class="ruled-copy">
+                  <strong class="ruled-title">Capa geográfica GeoJSON</strong>
+                  <span class="ruled-desc">Coordenadas y severidades listas para abrir en QGIS o plataformas C.R.A.</span>
+                </div>
+                <button id="exp-geojson" type="button" class="btn-line">Descargar GeoJSON</button>
+              </div>
+              <div class="export-option">
+                <div class="ruled-copy">
+                  <strong class="ruled-title">Informe ejecutivo PDF</strong>
+                  <span class="ruled-desc">Genera una vista limpia lista para imprimir o guardar como PDF.</span>
+                </div>
+                <button id="exp-pdf" type="button" class="btn-line">Imprimir / Guardar PDF</button>
+              </div>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Diálogo nativo para Maximizar / Minimizar el Mapa C.R.A -->
+  <dialog id="map-dialog" class="map-dialog" aria-labelledby="dialog-map-title">
+    <header class="dialog-header">
+      <h2 id="dialog-map-title" class="panel-title">Mapa georreferenciado C.R.A (vista expandida)</h2>
+      <div class="toolbar-row">
+        <button id="dialog-zoom-out" type="button" class="btn-line btn-icon" aria-label="Alejar mapa">-</button>
+        <button id="dialog-zoom-reset" type="button" class="btn-line">100%</button>
+        <button id="dialog-zoom-in" type="button" class="btn-line btn-icon" aria-label="Acercar mapa">+</button>
+        <button id="btn-minimize-map" type="button" class="btn-pill">Minimizar</button>
+      </div>
+    </header>
+    <div class="dialog-map-body">
+      <div id="dialog-map-viewport" class="map-viewport map-viewport--full" role="region" aria-label="Mapa expandido del Atlántico">
+        <div id="dialog-map-stage" class="map-stage" data-dragging="false">
+          <img class="map-base" src="./assets/map/relieve.jpg" alt="Relieve del Atlántico" width="691" height="641" draggable="false" />
+          <img id="dialog-map-plan-img" class="map-overlay" src="./assets/map/plan.png" alt="" width="691" height="641" data-hidden="false" draggable="false" />
+          <div id="dialog-map-pins" class="map-pins"></div>
+        </div>
+      </div>
+    </div>
+    <footer class="dialog-footer">
+      <div class="map-legend">
+        <span class="legend-item"><span class="legend-swatch swatch--preservacion"></span>Preservación</span>
+        <span class="legend-item"><span class="legend-swatch swatch--restauracion"></span>Restauración</span>
+        <span class="legend-item"><span class="legend-swatch swatch--recuperacion"></span>Recuperación</span>
+        <span class="legend-item"><span class="legend-swatch swatch--rehabilitacion"></span>Rehabilitación</span>
+        <span class="legend-item"><span class="legend-swatch swatch--manglar"></span>Manglar probable</span>
+      </div>
+    </footer>
+  </dialog>
+
+  <script src="./js/dashboard.js" defer></script>
+</body>
+</html>
