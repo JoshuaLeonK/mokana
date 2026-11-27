@@ -1,0 +1,34 @@
+# Dependencias
+node_modules/
+.pnp
+.pnp.js
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Variables de entorno y secretos (CRÍTICO: Nunca subir tokens de Meta/WhatsApp)
+.env
+.env.*
+!.env.example
+
+# Build y salidas
+.next/
+dist/
+build/
+out/
+
+# Logs y temporales
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Sistema operativo e IDE
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
