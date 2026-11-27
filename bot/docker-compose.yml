@@ -1,0 +1,11 @@
+services:
+  mokana-bot:
+    build: .
+    container_name: mokana-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./reports_db.json:/app/reports_db.json
