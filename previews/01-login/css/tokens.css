@@ -1,0 +1,66 @@
+/* Hallmark · v2.0.0 · Mokana Opción 2 (Atlas Ecológico Modular) · Tokens */
+:root {
+  /* Palette — OKLCH derived from Mokana official SVG brand pack */
+  --color-paper: oklch(97.3% 0.006 135);         /* #F7F8F5 warm sand/paper */
+  --color-paper-2: oklch(94.8% 0.011 138);       /* subtle sage-tinted well */
+  --color-surface: oklch(99.2% 0.003 135);       /* #FCFDFB clean card surface */
+  --color-ink: oklch(34.5% 0.056 155);           /* #1F4633 deep forest primary ink */
+  --color-ink-2: oklch(26.5% 0.044 155);         /* deeper forest for active states */
+  --color-body: oklch(28.0% 0.022 155);          /* high-contrast body text */
+  --color-muted: oklch(52.0% 0.028 145);         /* accessible secondary text (>= 4.5:1) */
+  --color-rule: oklch(84.5% 0.018 142);          /* 1px structural hairline */
+  --color-field-border: oklch(64.0% 0.028 142);  /* >= 3:1 input edge contrast */
+
+  /* Brand & Semantic Signals */
+  --color-accent: oklch(34.5% 0.056 155);        /* #1F4633 Verde Bosque primary action */
+  --color-accent-hover: oklch(29.0% 0.052 155);  /* darkened forest hover */
+  --color-accent-ink: oklch(98.5% 0.004 135);    /* crisp light text on primary */
+  --color-mangrove: oklch(46.5% 0.068 142);      /* #3A6539 Verde Mangle */
+  --color-water: oklch(59.0% 0.058 170);         /* #5B8F80 Turquesa Agua */
+  --color-sage: oklch(68.0% 0.032 138);          /* #8DA28B Verde Salvia */
+  --color-earth: oklch(49.5% 0.062 72);          /* #80613E Marrón Raíz */
+  --color-focus: oklch(45.0% 0.145 155);         /* high-visibility focus ring */
+  --color-error: oklch(49.5% 0.175 26);          /* accessible semantic error */
+  --color-error-bg: oklch(96.5% 0.018 26);       /* soft error tint */
+  --color-offline-bg: oklch(95.5% 0.024 78);     /* warm earth tint for offline */
+  --color-offline-ink: oklch(40.0% 0.075 68);    /* accessible earth text */
+
+  /* Typography — Max 2 families, 3 weights (400, 500, 700) */
+  --font-display: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Type Scale (1.25 ratio from 16px base) */
+  --text-xs: 0.8125rem;   /* 13px */
+  --text-sm: 0.875rem;    /* 14px */
+  --text-base: 1rem;      /* 16px */
+  --text-lg: 1.25rem;     /* 20px */
+  --text-xl: 1.5625rem;   /* 25px */
+
+  /* Spacing Scale */
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+  --space-2xl: 64px;
+
+  /* Concentric Radii */
+  --radius-card: 16px;
+  --radius-control: 10px;
+  --radius-inner: 7px;
+
+  /* Motion — Tokenized durations & curves */
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+
+  /* Elevation & Z-Index */
+  --shadow-subtle: 0 1px 2px oklch(22% 0.02 155 / 0.05);
+  --z-base: 1;
+  --z-raised: 10;
+}
