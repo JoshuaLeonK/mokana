@@ -1,0 +1,95 @@
+/* Hallmark · v2.0.0 · Mokana Vantage-DNA + Paleta Oficial Mokana · Tokens */
+:root {
+  /* Mokana Natural Palette (OKLCH) — Paper & Forest Ink */
+  --color-paper: oklch(97.2% 0.006 135);
+  --color-paper-2: oklch(94.6% 0.010 138);
+  --color-paper-3: oklch(91.5% 0.014 140);
+  --color-surface: oklch(99.0% 0.003 135);
+  --color-ink: oklch(30.5% 0.056 155);
+  --color-ink-2: oklch(24.0% 0.044 155);
+  --color-body: oklch(27.0% 0.020 155);
+  --color-muted: oklch(49.5% 0.024 145);
+  --color-rule: oklch(85.5% 0.015 142);
+  --color-rule-2: oklch(68.0% 0.028 142);
+
+  /* Brand Signal (Mokana Forest Green — restrained footprint) */
+  --color-accent: oklch(34.5% 0.056 155);
+  --color-accent-hi: oklch(28.5% 0.054 155);
+  --color-accent-ink: oklch(98.5% 0.004 135);
+  --color-mangrove: oklch(46.5% 0.068 142);
+  --color-water: oklch(55.5% 0.064 170);
+  --color-sage: oklch(68.0% 0.032 138);
+  --color-earth: oklch(49.5% 0.062 72);
+  --color-focus: oklch(45.0% 0.145 155);
+
+  /* High-Impact Risk × Impact Thermal Scale (Psychological Urgency) */
+  --color-critical: oklch(48.0% 0.195 25);
+  --color-critical-bg: oklch(93.5% 0.042 25);
+  --color-critical-strong: oklch(46.0% 0.205 24);
+  --color-critical-ink: oklch(98.5% 0.006 25);
+  --color-high: oklch(53.0% 0.165 50);
+  --color-high-bg: oklch(94.8% 0.036 58);
+  --color-moderate: oklch(52.0% 0.115 88);
+  --color-moderate-bg: oklch(95.5% 0.026 92);
+  --color-low: oklch(43.5% 0.095 152);
+  --color-low-bg: oklch(94.5% 0.024 150);
+  --color-offline-bg: oklch(95.0% 0.028 75);
+  --color-offline-ink: oklch(38.0% 0.075 68);
+
+  /* Official C.R.A Atlántico Map Legend */
+  --color-map-sea: oklch(48.0% 0.115 242);
+  --color-map-preservacion: oklch(54.0% 0.125 245);
+  --color-map-restauracion: oklch(59.0% 0.145 142);
+  --color-map-recuperacion: oklch(68.0% 0.175 58);
+  --color-map-rehabilitacion: oklch(78.0% 0.065 308);
+  --color-map-manglar: oklch(60.0% 0.145 335);
+  --color-map-pin: oklch(86.5% 0.135 95);
+  --color-backdrop: oklch(16.0% 0.022 155 / 0.58);
+
+  /* Vantage Typography DNA: Geologica variable (SHRP 100 display / SHRP 0 body) */
+  --font-display: "Geologica", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-body: "Geologica", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --display-weight: 300;
+  --tracking-display: -0.035em;
+
+  /* Type Scale */
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.75rem;
+  --text-2xl: 2.25rem;
+
+  /* Strict 4px Spacing Scale */
+  --space-3xs: 2px;
+  --space-2xs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+
+  /* Vantage Geometry — Precision corner ticks, sharp 4px radius, zero shadow */
+  --sidebar-w: 248px;
+  --topbar-h: 64px;
+  --radius-card: 4px;
+  --radius-pill: 999px;
+  --rule-hair: 1px;
+  --tick: 10px;
+  --shadow-card: none;
+
+  /* Motion */
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+
+  /* Z-Index */
+  --z-base: 1;
+  --z-raised: 10;
+  --z-sticky: 200;
+  --z-drawer: 300;
+  --z-modal: 400;
+}

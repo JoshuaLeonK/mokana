@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 84" fill="none" role="img" aria-label="Mokana">
+  <!-- Solid geometric mangrove emblem -->
+  <g fill="#1F4633">
+    <!-- Outer solid ring -->
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M42 6C22.118 6 6 22.118 6 42s16.118 36 36 36 36-16.118 36-36S61.882 6 42 6Zm0 6c16.569 0 30 13.431 30 30S58.569 72 42 72 12 58.569 12 42 25.431 12 42 12Z"/>
+    <!-- Solid mangrove canopy (3 clean geometric leaves) -->
+    <path d="M42 19c-4.5 5.2-6.8 11-6.8 16.2 0 4.6 3 8.3 6.8 8.3s6.8-3.7 6.8-8.3C48.8 30 46.5 24.2 42 19Z"/>
+    <path d="M25.5 29.5c5.8.6 11 3.4 14 7.5-3.8 2.4-8.8 2.4-12.5-.5-3.4-2.7-4.5-6.2-1.5-7Z"/>
+    <path d="M58.5 29.5c-5.8.6-11 3.4-14 7.5 3.8 2.4 8.8 2.4 12.5-.5 3.4-2.7 4.5-6.2 1.5-7Z"/>
+    <!-- Solid trunk & arched mangrove roots -->
+    <path d="M39.2 42h5.6v9.5c3.8 1.7 7.7 5.2 10.6 10.5h-5.2c-2-3.4-4.4-5.7-6.6-6.8V62h-3.2v-6.8c-2.2 1.1-4.6 3.4-6.6 6.8h-5.2c2.9-5.3 6.8-8.8 10.6-10.5V42Z"/>
+    <!-- Solid water baseline -->
+    <rect x="24" y="63.5" width="36" height="3.2" rx="1.6"/>
+  </g>
+  <!-- Solid geometric wordmark -->
+  <text
+    x="94"
+    y="53"
+    fill="#1F4633"
+    font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
+    font-size="38"
+    font-weight="700"
+    letter-spacing="-0.03em"
+  >Mokana</text>
+</svg>
