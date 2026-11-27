@@ -85,6 +85,15 @@ class EmailNotifier:
 
         image_url = inc.get("image_url") or ""
         logo_url = f"{PUBLIC_BASE_URL}/static/mokana-logo.jpg"
+        lat_val = loc.get("lat") or 11.0458
+        lng_val = loc.get("lng") or -74.8461
+        # Enlace directo a Google Maps / Earth en Vista Satelital 3D (con inclinación 3D 55t y zoom de ecosistema 650m)
+        gmaps_3d_url = (
+            f"https://www.google.com/maps/@{lat_val},{lng_val},550m/data=!3m1!1e3"
+        )
+        gmaps_pin_url = (
+            f"https://www.google.com/maps/search/?api=1&query={lat_val},{lng_val}"
+        )
 
         image_block = ""
         if image_url:
@@ -180,11 +189,17 @@ class EmailNotifier:
       <!-- Ficha de Localización y Recepción -->
       <table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px;">
         <tr>
-          <td style="padding:8px 10px;background:#f8fafc;border:1px solid #cbd5e1;font-weight:600;color:#334155;width:34%;">
-            Ecosistema / Punto de Control
+          <td style="padding:10px;background:#f8fafc;border:1px solid #cbd5e1;font-weight:600;color:#334155;width:34%;">
+            Ecosistema / Ubicación
           </td>
-          <td style="padding:8px 10px;border:1px solid #cbd5e1;color:#0f172a;font-weight:600;">
-            {loc.get('zone_title')} (Coord: {loc.get('lat')}, {loc.get('lng')})
+          <td style="padding:10px;border:1px solid #cbd5e1;color:#0f172a;">
+            <div style="font-weight:700;margin-bottom:6px;">{loc.get('zone_title')}</div>
+            <a href="{gmaps_3d_url}" target="_blank" style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;padding:6px 12px;border-radius:4px;font-size:12px;font-weight:600;margin-right:6px;">
+              Abrir Mapa Satelital 3D (Google Maps)
+            </a>
+            <a href="{gmaps_pin_url}" target="_blank" style="display:inline-block;background:#e2e8f0;color:#0f172a;text-decoration:none;padding:6px 12px;border-radius:4px;font-size:12px;font-weight:600;">
+              Ver Marcador de Ruta
+            </a>
           </td>
         </tr>
         <tr>
