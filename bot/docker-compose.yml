@@ -10,3 +10,5 @@ services:
     volumes:
       - ./reports_db.json:/app/reports_db.json
       - ./static/uploads:/app/static/uploads
+      - ../public:/app/frontend_public:ro
+      - ../views:/app/frontend_views:ro

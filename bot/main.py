@@ -6,13 +6,14 @@ import json
 import logging
 import os
 import re
+import secrets
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
-from urllib.parse import quote
-from fastapi import FastAPI, BackgroundTasks, Header, HTTPException, Query, Request
+from urllib.parse import parse_qs, quote
+from fastapi import FastAPI, BackgroundTasks, Cookie, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -48,6 +49,74 @@ app.add_middleware(
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# Montar assets estáticos del Frontend Web (/assets/*) desde ../public/assets o /app/frontend_public/assets
+_base_dir = os.path.dirname(__file__)
+FRONTEND_PUBLIC_DIR = (
+    os.path.join(_base_dir, "frontend_public")
+    if os.path.exists(os.path.join(_base_dir, "frontend_public"))
+    else os.path.abspath(os.path.join(_base_dir, "..", "public"))
+)
+FRONTEND_VIEWS_DIR = (
+    os.path.join(_base_dir, "frontend_views")
+    if os.path.exists(os.path.join(_base_dir, "frontend_views"))
+    else os.path.abspath(os.path.join(_base_dir, "..", "views"))
+)
+
+if os.path.exists(os.path.join(FRONTEND_PUBLIC_DIR, "assets")):
+    app.mount(
+        "/assets",
+        StaticFiles(directory=os.path.join(FRONTEND_PUBLIC_DIR, "assets")),
+        name="frontend_assets",
+    )
+
+WEB_USERS = {
+    "admin@cra.gov.co": {
+        "password": "CraMokana2026!",
+        "role": "cra",
+        "redirect": "/cra",
+    },
+    "operaciones@puertoverde.com": {
+        "password": "EmpresaMokana2026!",
+        "role": "empresa",
+        "redirect": "/empresa",
+    },
+}
+WEB_SESSIONS: Dict[str, Dict[str, str]] = {}
+
+
+def _render_login_html(flash_error: str = "", old_email: str = "", old_tenant: str = "cra") -> str:
+    login_path = os.path.join(FRONTEND_VIEWS_DIR, "auth", "login.php")
+    if not os.path.exists(login_path):
+        return "<h1>Mokana API & Web Online</h1>"
+    is_sub = old_tenant == "subscriber"
+    raw = open(login_path, "r", encoding="utf-8").read()
+    idx = raw.find("<!DOCTYPE html>")
+    html_out = raw[idx:] if idx >= 0 else raw
+    replacements = {
+        "<?= htmlspecialchars($oldTenant, ENT_QUOTES, 'UTF-8') ?>": "subscriber" if is_sub else "cra",
+        "<?= $oldTenant === 'cra' ? 'true' : 'false' ?>": "false" if is_sub else "true",
+        "<?= $oldTenant === 'subscriber' ? 'true' : 'false' ?>": "true" if is_sub else "false",
+        "<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>": "mokana-csrf-token",
+        "<?= $flashError ? 'true' : 'false' ?>": "true" if flash_error else "false",
+        "<?= $flashError ? 'error' : 'info' ?>": "error" if flash_error else "info",
+        "<?= $flashError ? htmlspecialchars($flashError, ENT_QUOTES, 'UTF-8') : '' ?>": flash_error,
+        "<?= htmlspecialchars($emailLabel, ENT_QUOTES, 'UTF-8') ?>": "Correo corporativo" if is_sub else "Correo institucional",
+        "<?= htmlspecialchars($oldEmail, ENT_QUOTES, 'UTF-8') ?>": old_email,
+        "<?= htmlspecialchars($emailPh, ENT_QUOTES, 'UTF-8') ?>": "equipo@empresa.com" if is_sub else "nombre@cra.gov.co",
+    }
+    for k, v in replacements.items():
+        html_out = html_out.replace(k, v)
+    return html_out
+
+
+def _render_php_view(rel_path: str) -> str:
+    view_path = os.path.join(FRONTEND_VIEWS_DIR, rel_path)
+    if not os.path.exists(view_path):
+        return "<h1>Vista no encontrada</h1>"
+    raw = open(view_path, "r", encoding="utf-8").read()
+    idx = raw.find("<!DOCTYPE html>")
+    return raw[idx:] if idx >= 0 else raw
 
 zernio = ZernioClient()
 analyst = GeminiAnalyst()
@@ -568,19 +637,36 @@ async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
 # ENDPOINTS REST & TIEMPO REAL PARA EL PANEL DE ADMINISTRACIÓN
 # =============================================================================
 
-@app.get("/")
+# =============================================================================
+# RUTAS DEL FRONTEND WEB (LOGIN, PANEL C.R.A. Y PANEL EMPRESA) + HEALTH CHECK
+# =============================================================================
+
+@app.get("/", response_model=None)
+async def root_or_login(request: Request, mokana_sid: Optional[str] = Cookie(default=None)) -> Response:
+    """Si un navegador abre https://mokana.joshual.tech/, muestra el Frontend Web (Login o Panel). Si pide JSON, devuelve status."""
+    accept = (request.headers.get("accept") or "").lower()
+    if "text/html" in accept and os.path.exists(os.path.join(FRONTEND_VIEWS_DIR, "auth", "login.php")):
+        sess = WEB_SESSIONS.get(mokana_sid or "")
+        if sess:
+            return RedirectResponse(url="/cra" if sess.get("role") == "cra" else "/empresa", status_code=302)
+        return HTMLResponse(content=_render_login_html())
+    return await health_check()
+
+
+@app.get("/health")
 async def health_check() -> Dict[str, Any]:
     reports = state_mgr.list_reports()
     subs = state_mgr.list_subscribers()
     return {
         "service": "Mokaná WhatsApp Bot, C.R.A. Early Warning API & B2B Data Hub",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "status": "online",
         "zones_configured": len(MANGROVE_ZONES),
         "total_reports": len(reports),
         "total_subscribers": len(subs),
         "endpoints": {
             "reports": "/api/reports",
+            "export_open_data": "/api/reports/export?format=csv",
             "stats": "/api/stats",
             "zones_and_totems": "/api/zones",
             "subscribers_b2b_cra": "/api/subscribers",
@@ -588,6 +674,66 @@ async def health_check() -> Dict[str, Any]:
             "realtime_sse_stream": "/api/events/stream",
         },
     }
+
+
+@app.get("/login")
+async def web_login_page(mokana_sid: Optional[str] = Cookie(default=None)) -> Response:
+    sess = WEB_SESSIONS.get(mokana_sid or "")
+    if sess:
+        return RedirectResponse(url="/cra" if sess.get("role") == "cra" else "/empresa", status_code=302)
+    return HTMLResponse(content=_render_login_html())
+
+
+@app.post("/auth/login.php")
+async def web_login_submit(request: Request) -> Response:
+    raw_body = (await request.body()).decode("utf-8", errors="ignore")
+    params = parse_qs(raw_body)
+    email = (params.get("email", [""])[0] or "").strip().lower()
+    password = params.get("password", [""])[0] or ""
+    tenant_type = params.get("tenant_type", ["cra"])[0] or "cra"
+
+    user = WEB_USERS.get(email)
+    if user and user["password"] == password:
+        sid = secrets.token_hex(16)
+        WEB_SESSIONS[sid] = {"email": email, "role": user["role"]}
+        resp = RedirectResponse(url=user["redirect"], status_code=302)
+        resp.set_cookie(key="mokana_sid", value=sid, path="/", httponly=True, samesite="lax")
+        return resp
+
+    return HTMLResponse(
+        content=_render_login_html(
+            flash_error="Credenciales inválidas. Verifica tu correo y contraseña.",
+            old_email=email,
+            old_tenant=tenant_type,
+        ),
+        status_code=401,
+    )
+
+
+@app.get("/auth/logout.php")
+@app.get("/logout")
+async def web_logout(mokana_sid: Optional[str] = Cookie(default=None)) -> Response:
+    if mokana_sid:
+        WEB_SESSIONS.pop(mokana_sid, None)
+    resp = RedirectResponse(url="/login", status_code=302)
+    resp.delete_cookie(key="mokana_sid", path="/")
+    return resp
+
+
+@app.get("/cra")
+async def web_cra_panel(mokana_sid: Optional[str] = Cookie(default=None)) -> Response:
+    sess = WEB_SESSIONS.get(mokana_sid or "")
+    if not sess or sess.get("role") != "cra":
+        return RedirectResponse(url="/login", status_code=302)
+    return HTMLResponse(content=_render_php_view(os.path.join("cra", "index.php")))
+
+
+@app.get("/empresa")
+async def web_empresa_panel(mokana_sid: Optional[str] = Cookie(default=None)) -> Response:
+    sess = WEB_SESSIONS.get(mokana_sid or "")
+    if not sess or sess.get("role") != "empresa":
+        return RedirectResponse(url="/login", status_code=302)
+    return HTMLResponse(content=_render_php_view(os.path.join("empresa", "index.php")))
 
 
 @app.post("/webhook/zernio")
