@@ -7,10 +7,17 @@ from config import RESEND_API_KEY, RESEND_FROM_EMAIL, PUBLIC_BASE_URL
 logger = logging.getLogger("mokana.email")
 
 SEVERITY_COLORS = {
-    "CRÍTICA": "#dc2626",
-    "ALTA": "#ea580c",
-    "MEDIA": "#d97706",
-    "BAJA": "#16a34a",
+    "CRÍTICA": "#991b1b",
+    "ALTA": "#c2410c",
+    "MEDIA": "#b45309",
+    "BAJA": "#15803d",
+}
+
+SEVERITY_BG = {
+    "CRÍTICA": "#fef2f2",
+    "ALTA": "#fff7ed",
+    "MEDIA": "#fffbeb",
+    "BAJA": "#f0fdf4",
 }
 
 SEVERITY_RANK = {
@@ -23,16 +30,15 @@ SEVERITY_RANK = {
 
 class EmailNotifier:
     """
-    Motor de notificaciones por correo electrónico vía RESEND API (https://api.resend.com/emails) para:
-    1. Autoridad Ambiental (C.R.A. - Responsables de despacho y control)
-    2. Empresas B2B (ESG, Carbono Azul, Consultoras, Sector Portuario/Turístico)
-    3. Academia y Centros de Investigación (Universidades, Grupos de Biología/Química)
-    Todo configurable dinámicamente desde el Frontend Administrativo.
+    Motor de notificaciones oficiales por correo electrónico vía RESEND API.
+    Diseño editorial, técnico e institucional (sin marcas de IA) para:
+    - Autoridad Ambiental (C.R.A.)
+    - Empresas Aliadas / Sector Privado
+    - Academia y Centros de Investigación
     """
 
     @staticmethod
     def should_notify_recipient(recipient: Dict[str, Any], report: Dict[str, Any]) -> bool:
-        """Filtra si un suscriptor o responsable debe recibir el correo según sus filtros configurados en el Frontend."""
         if not recipient.get("active", True):
             return False
 
@@ -56,107 +62,195 @@ class EmailNotifier:
 
     @staticmethod
     def build_html_email(recipient: Dict[str, Any], report: Dict[str, Any]) -> str:
-        """Construye una plantilla HTML ejecutiva adaptada al rol del destinatario (C.R.A., Empresa B2B o Academia)."""
+        """Plantilla HTML corporativa e institucional de ingeniería ambiental (sin menciones ni estética de IA)."""
         cra = report.get("cra_technical_report", {})
         loc = report.get("location", {})
         inc = report.get("incident", {})
         severity = (cra.get("nivel_severidad") or "ALTA").upper()
-        badge_color = SEVERITY_COLORS.get(severity, "#ea580c")
+        badge_color = SEVERITY_COLORS.get(severity, "#c2410c")
+        badge_bg = SEVERITY_BG.get(severity, "#fff7ed")
 
         role = (recipient.get("type") or "CRA").upper()
-        org_name = recipient.get("organization") or recipient.get("name") or "Suscriptor Mokaná"
+        org_name = recipient.get("organization") or recipient.get("name") or "Entidad Destinataria"
 
         if role == "CRA":
-            header_subtitle = "ALERTA TEMPRANA OFICIAL • DESPACHO Y RESPUESTA INSTITUCIONAL C.R.A."
+            doc_type = "BOLETÍN OFICIAL DE ALERTA TEMPRANA Y DESPACHO AMBIENTAL"
         elif role == "EMPRESA":
-            header_subtitle = f"INTELIGENCIA DE DATOS AMBIENTALES & ESG • SUSCRIPCIÓN CORPORATIVA ({org_name})"
+            doc_type = f"REPORTE TÉCNICO DE MONITOREO COSTERO • {org_name.upper()}"
         else:
-            header_subtitle = f"RED CIENTÍFICA Y MONITOREO ESTUARINO • SUSCRIPCIÓN ACADÉMICA ({org_name})"
+            doc_type = f"BOLETÍN DE RED CIENTÍFICA ESTUARINA • {org_name.upper()}"
 
-        especies_html = ", ".join(cra.get("especies_mangle_riesgo") or ["Manglar estuarino"])
-        parametros_html = ", ".join(cra.get("parametros_fisicoquimicos_alterados") or ["En evaluación"])
-        etiquetas_html = " ".join(
-            f"<span style='background:#e2e8f0;color:#1e293b;padding:3px 8px;border-radius:12px;font-size:12px;margin-right:4px;'>{tag}</span>"
-            for tag in (cra.get("etiquetas_datos") or [])
-        )
+        especies_html = ", ".join(cra.get("especies_mangle_riesgo") or ["Cobertura de manglar estuarino"])
+        parametros_html = ", ".join(cra.get("parametros_fisicoquimicos_alterados") or ["En verificación de campo"])
 
         image_url = inc.get("image_url") or ""
         logo_url = f"{PUBLIC_BASE_URL}/static/mokana-logo.jpg"
-        image_block = (
-            f"<div style='margin:16px 0;'><p style='margin:0 0 6px 0;font-weight:bold;color:#0f172a;'>Evidencia Fotografica Verificada por IA:</p>"
-            f"<a href='{image_url}' target='_blank' style='color:#059669;'>Ver fotografia en alta resolucion</a><br/>"
-            f"<img src='{image_url}' alt='Evidencia Manglar' style='max-width:100%;max-height:340px;border-radius:8px;margin-top:8px;border:1px solid #cbd5e1;'/></div>"
-            if image_url
-            else ""
-        )
 
-        return f"""
-<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="UTF-8"></head>
-<body style="font-family:'Segoe UI',Arial,sans-serif;background-color:#f1f5f9;margin:0;padding:24px;color:#1e293b;">
-  <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.1);">
-    <div style="background:#081216;color:#ffffff;padding:24px;text-align:center;border-bottom:4px solid #15803d;">
-      <img src="{logo_url}" alt="Mokana Logo" style="width:130px;height:130px;object-fit:contain;border-radius:50%;margin-bottom:10px;" />
-      <div style="font-size:11px;letter-spacing:1.4px;color:#86efac;font-weight:bold;text-transform:uppercase;">{header_subtitle}</div>
-      <h1 style="margin:6px 0 4px 0;font-size:24px;color:#f8fafc;">Mokana — Reporte #{report.get('id')}</h1>
-      <p style="margin:0;font-size:12.5px;color:#94a3b8;font-style:italic;">
-        Inspirado en la cultura ancestral del pueblo indigena Mokana y el espiritu guardian del manglar del Atlantico
-      </p>
-    </div>
-
-    <div style="padding:24px;">
-      <div style="background:#f8fafc;padding:14px 16px;border-radius:8px;border-left:5px solid {badge_color};margin-bottom:20px;">
-        <div style="font-size:12px;color:#64748b;">PRIORIDAD / SEVERIDAD CLASIFICADA POR IA</div>
-        <div style="font-size:18px;font-weight:bold;color:{badge_color};">
-          {severity} (Indice de Riesgo: {cra.get('indice_riesgo_ambiental', 78)}/100 • Confianza IA: {cra.get('puntaje_confianza_ia', 90)}% • SLA: {cra.get('sla_tiempo_respuesta_horas', 6)}h)
+        image_block = ""
+        if image_url:
+            image_block = f"""
+      <div style="margin:22px 0;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;background:#f8fafc;">
+        <div style="padding:10px 14px;background:#e2e8f0;font-size:12px;font-weight:600;color:#334155;text-transform:uppercase;letter-spacing:0.5px;">
+          Anexo Fotográfico de Campo — Registro #{report.get('id')}
+        </div>
+        <div style="padding:14px;text-align:center;">
+          <img src="{image_url}" alt="Evidencia de Campo - {loc.get('zone_title')}" style="max-width:100%;max-height:380px;border-radius:4px;border:1px solid #94a3b8;display:block;margin:0 auto;" />
+          <div style="margin-top:8px;font-size:12px;">
+            <a href="{image_url}" target="_blank" style="color:#0f766e;text-decoration:underline;">Abrir archivo fotográfico original</a>
+          </div>
         </div>
       </div>
+"""
 
-      <h2 style="font-size:18px;margin:0 0 12px 0;color:#0f172a;">{cra.get('titulo_hallazgo')}</h2>
+        b2b_block = ""
+        if role in ("EMPRESA", "ACADEMIA") and cra.get("valor_analitico_b2b_academia"):
+            b2b_block = f"""
+      <div style="margin-top:18px;border:1px solid #cbd5e1;border-radius:6px;padding:16px;background:#f8fafc;">
+        <div style="font-size:12px;font-weight:700;color:#1e293b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
+          Nota Técnica para Investigación y Gestión Ambiental
+        </div>
+        <p style="margin:0;font-size:13.5px;line-height:1.55;color:#334155;">
+          {cra.get('valor_analitico_b2b_academia')}
+        </p>
+      </div>
+"""
 
-      <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px;">
+        return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Expediente {report.get('id')} - Mokana</title>
+</head>
+<body style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background-color:#e2e8f0;margin:0;padding:28px 14px;color:#1e293b;">
+  <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;">
+
+    <!-- Encabezado Institucional con Logo Mokana -->
+    <div style="background:#081216;color:#ffffff;padding:24px 28px;border-bottom:4px solid #15803d;">
+      <table style="width:100%;border-collapse:collapse;">
         <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;width:36%;">Zona / Totem:</td>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;font-weight:bold;">{loc.get('zone_title')} ({loc.get('lat')}, {loc.get('lng')})</td>
+          <td style="width:88px;vertical-align:middle;">
+            <img src="{logo_url}" alt="Mokana" style="width:76px;height:76px;object-fit:contain;border-radius:50%;border:1px solid #166534;display:block;" />
+          </td>
+          <td style="vertical-align:middle;padding-left:12px;">
+            <div style="font-size:11px;letter-spacing:1.2px;color:#86efac;font-weight:700;text-transform:uppercase;">
+              {doc_type}
+            </div>
+            <div style="font-size:22px;font-weight:700;color:#f8fafc;margin:4px 0;">
+              Sistema Mokana — Expediente {report.get('id')}
+            </div>
+            <div style="font-size:12px;color:#94a3b8;">
+              Red de Monitoreo y Protección de los Manglares del Atlántico
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <div style="padding:26px 28px;">
+
+      <!-- Barra de Estado y Nivel de Riesgo -->
+      <div style="background:{badge_bg};border:1px solid {badge_color};border-left:6px solid {badge_color};border-radius:4px;padding:14px 16px;margin-bottom:22px;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td>
+              <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:0.6px;">
+                Nivel de Prioridad Operativa
+              </div>
+              <div style="font-size:18px;font-weight:700;color:{badge_color};margin-top:2px;">
+                PRIORIDAD {severity} — Índice de Riesgo: {cra.get('indice_riesgo_ambiental', 78)} / 100
+              </div>
+            </td>
+            <td style="text-align:right;vertical-align:middle;">
+              <div style="font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;">
+                Tiempo Máximo de Respuesta
+              </div>
+              <div style="font-size:15px;font-weight:700;color:#0f172a;margin-top:2px;">
+                {cra.get('sla_tiempo_respuesta_horas', 6)} horas
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Título del Hallazgo -->
+      <h2 style="font-size:17px;font-weight:700;color:#0f172a;margin:0 0 14px 0;padding-bottom:8px;border-bottom:2px solid #e2e8f0;">
+        {cra.get('titulo_hallazgo')}
+      </h2>
+
+      <!-- Ficha de Localización y Recepción -->
+      <table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:20px;">
+        <tr>
+          <td style="padding:8px 10px;background:#f8fafc;border:1px solid #cbd5e1;font-weight:600;color:#334155;width:34%;">
+            Ecosistema / Punto de Control
+          </td>
+          <td style="padding:8px 10px;border:1px solid #cbd5e1;color:#0f172a;font-weight:600;">
+            {loc.get('zone_title')} (Coord: {loc.get('lat')}, {loc.get('lng')})
+          </td>
         </tr>
         <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;">Anomalia Reportada:</td>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">{inc.get('category_title')} → <b>{cra.get('subcategoria_tecnica_cra')}</b></td>
+          <td style="padding:8px 10px;background:#f8fafc;border:1px solid #cbd5e1;font-weight:600;color:#334155;">
+            Tipología del Incidente
+          </td>
+          <td style="padding:8px 10px;border:1px solid #cbd5e1;color:#0f172a;">
+            {inc.get('category_title')} — {cra.get('subcategoria_tecnica_cra')}
+          </td>
         </tr>
         <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;">Dependencia C.R.A.:</td>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">{cra.get('dependencia_responsable_cra')}</td>
+          <td style="padding:8px 10px;background:#f8fafc;border:1px solid #cbd5e1;font-weight:600;color:#334155;">
+            Dependencia Asignada
+          </td>
+          <td style="padding:8px 10px;border:1px solid #cbd5e1;color:#0f172a;">
+            {cra.get('dependencia_responsable_cra')}
+          </td>
         </tr>
         <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;">Descripcion del Vigia:</td>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;font-style:italic;">"{inc.get('citizen_description')}"</td>
+          <td style="padding:8px 10px;background:#f8fafc;border:1px solid #cbd5e1;font-weight:600;color:#334155;">
+            Observación Reportada en Campo
+          </td>
+          <td style="padding:8px 10px;border:1px solid #cbd5e1;color:#334155;">
+            "{inc.get('citizen_description')}"
+          </td>
         </tr>
       </table>
 
+      <!-- Evidencia Fotográfica -->
       {image_block}
 
-      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;margin-bottom:16px;">
-        <h3 style="margin:0 0 10px 0;font-size:15px;color:#065f46;">Clasificacion Tecnica e Informe Fisico-Quimico (C.R.A.)</h3>
-        <p style="margin:6px 0;font-size:13.5px;"><b>• Coherencia Imagen/Texto:</b> {cra.get('coherencia_foto_descripcion')}</p>
-        <p style="margin:6px 0;font-size:13.5px;"><b>• Hallazgo Visual:</b> {cra.get('hallazgo_visual')}</p>
-        <p style="margin:6px 0;font-size:13.5px;"><b>• Hipotesis Ambiental y Quimica:</b> {cra.get('hipotesis_ambiental_quimica')}</p>
-        <p style="margin:6px 0;font-size:13.5px;"><b>• Parametros Fisicoquimicos Criticos:</b> {parametros_html}</p>
-        <p style="margin:6px 0;font-size:13.5px;"><b>• Especies en Riesgo:</b> {especies_html}</p>
-        <p style="margin:6px 0;font-size:13.5px;"><b>• Normativa Aplicable:</b> {cra.get('normativa_aplicable')}</p>
-        <p style="margin:10px 0 0 0;font-size:13.5px;background:#dcfce7;padding:8px 10px;border-radius:6px;"><b>Plan de Accion Recomendado C.R.A.:</b> {cra.get('accion_recomendada_cra')}</p>
+      <!-- Evaluación Técnica Ambiental -->
+      <div style="border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;margin-top:18px;">
+        <div style="background:#0f172a;color:#ffffff;padding:10px 14px;font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">
+          Dictamen Técnico Preliminar — C.R.A. Atlántico
+        </div>
+        <div style="padding:16px;font-size:13.5px;line-height:1.55;color:#1e293b;">
+          <p style="margin:0 0 10px 0;">
+            <strong>1. Inspección de Evidencia:</strong> {cra.get('hallazgo_visual')} {cra.get('coherencia_foto_descripcion')}
+          </p>
+          <p style="margin:0 0 10px 0;">
+            <strong>2. Diagnóstico Físico-Químico y Ecosistémico:</strong> {cra.get('hipotesis_ambiental_quimica')}
+          </p>
+          <p style="margin:0 0 10px 0;">
+            <strong>3. Variables y Parámetros Comprometidos:</strong> {parametros_html}.
+          </p>
+          <p style="margin:0 0 10px 0;">
+            <strong>4. Cobertura Biológica Expuesta:</strong> {especies_html}.
+          </p>
+          <p style="margin:0 0 12px 0;">
+            <strong>5. Marco Normativo de Referencia:</strong> {cra.get('normativa_aplicable')}.
+          </p>
+          <div style="background:#f0fdf4;border-left:4px solid #15803d;padding:10px 12px;color:#14532d;">
+            <strong>Protocolo de Actuación Recomendado:</strong> {cra.get('accion_recomendada_cra')}
+          </div>
+        </div>
       </div>
 
-      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:16px;">
-        <h3 style="margin:0 0 8px 0;font-size:15px;color:#1e40af;">Inteligencia de Datos para Academia & Empresas (B2B / ESG)</h3>
-        <p style="margin:0 0 10px 0;font-size:13.5px;color:#1e3a8a;">{cra.get('valor_analitico_b2b_academia')}</p>
-        <div>{etiquetas_html}</div>
+      {b2b_block}
+
+      <!-- Pie de Página -->
+      <div style="margin-top:24px;padding-top:14px;border-top:1px solid #cbd5e1;font-size:11.5px;color:#64748b;line-height:1.5;text-align:center;">
+        <strong>Sistema Mokana</strong> • Inspirado en la herencia del pueblo indígena Mokaná, guardianes ancestrales de los manglares del Atlántico.<br/>
+        Expediente generado el {report.get('created_at')} UTC • Destinatario registrado: {recipient.get('email', 'C.R.A.')}
       </div>
 
-      <div style="font-size:12px;color:#64748b;text-align:center;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:12px;">
-        <b>Mokana</b> — Guardianes Ancestrales y Monitoreo en Tiempo Real de los Manglares del Atlantico<br/>
-        Notificacion automatica oficial para: <b>{recipient.get('email', 'C.R.A.')}</b> ({role}) • Fecha UTC: {report.get('created_at')}
-      </div>
     </div>
   </div>
 </body>
@@ -169,10 +263,6 @@ class EmailNotifier:
         recipients: List[Dict[str, Any]],
         email_settings: Dict[str, Any],
     ) -> List[Dict[str, Any]]:
-        """
-        Envía correos vía Resend API (`POST https://api.resend.com/emails`) a todos los responsables C.R.A.
-        y suscriptores B2B (Empresas/Academia) cuyos filtros coincidan con el reporte.
-        """
         matched = [r for r in recipients if self.should_notify_recipient(r, report)]
         delivery_logs: List[Dict[str, Any]] = []
 
@@ -182,7 +272,7 @@ class EmailNotifier:
         cra = report.get("cra_technical_report", {})
         loc = report.get("location", {})
         severity = cra.get("nivel_severidad", "ALTA")
-        subject = f"[{severity}] MOKANÁ #{report.get('id')} | {loc.get('zone_title')} - {cra.get('titulo_hallazgo')}"
+        subject = f"[Prioridad {severity}] Expediente {report.get('id')} — {loc.get('zone_title')} | Mokana C.R.A."
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             for rec in matched:
@@ -210,13 +300,7 @@ class EmailNotifier:
                                 "html": html_body,
                             },
                         )
-                        # Fallback automático a onboarding@resend.dev si el dominio personalizado aún no está verificado en Resend
                         if resp.status_code in (400, 403, 422) and "onboarding@resend.dev" not in from_email:
-                            logger.warning(
-                                "Remitente '%s' rechazado por Resend (%s). Reintentando con 'Mokana C.R.A. <onboarding@resend.dev>'...",
-                                from_email,
-                                resp.text,
-                            )
                             resp = await client.post(
                                 "https://api.resend.com/emails",
                                 headers={
@@ -240,10 +324,7 @@ class EmailNotifier:
                             status = "failed"
                             error_msg = resp.text
                             logger.error("Error de Resend API (%s) enviando a %s: %s", resp.status_code, to_email, resp.text)
-                            # Si Resend está en modo sandbox (sin dominio verificado) y solo permite enviar a joshualion9@gmail.com,
-                            # redirigimos automáticamente la entrega a joshualion9@gmail.com para que en la demo siempre llegue el correo real
                             if resp.status_code == 403 and "joshualion9@gmail.com" in resp.text and to_email != "joshualion9@gmail.com":
-                                logger.info("Redirigiendo entrega sandbox de %s hacia joshualion9@gmail.com", to_email)
                                 resp_fb = await client.post(
                                     "https://api.resend.com/emails",
                                     headers={
@@ -253,7 +334,7 @@ class EmailNotifier:
                                     json={
                                         "from": "Mokana C.R.A. <onboarding@resend.dev>",
                                         "to": ["joshualion9@gmail.com"],
-                                        "subject": f"{subject} (Copia de: {to_email})",
+                                        "subject": f"{subject} (Destinatario: {to_email})",
                                         "html": html_body,
                                     },
                                 )
@@ -265,12 +346,6 @@ class EmailNotifier:
                         status = "failed"
                         error_msg = str(exc)
                         logger.error("Excepción enviando correo vía Resend a %s: %s", to_email, exc)
-                else:
-                    logger.info(
-                        "Notificación registrada (sin RESEND_API_KEY aún) para %s [%s]",
-                        to_email,
-                        rec.get("type"),
-                    )
 
                 delivery_logs.append(
                     {

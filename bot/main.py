@@ -1,7 +1,10 @@
 import asyncio
+import html
 import json
 import logging
 import os
+import re
+import time
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import quote
 from fastapi import FastAPI, BackgroundTasks, Header, HTTPException, Query, Request
@@ -50,6 +53,57 @@ mailer = EmailNotifier()
 
 PROCESSED_EVENTS: Set[str] = set()
 SSE_CLIENTS: List[asyncio.Queue] = []
+
+# =============================================================================
+# CIBERSEGURIDAD: RATE LIMITING, COOLDOWN DE 20s Y PROTECCIÓN ANTI-FLOOD
+# =============================================================================
+REPORT_COOLDOWN_SECONDS = 20.0
+FLOOD_WINDOW_SECONDS = 20.0
+MAX_MESSAGES_PER_WINDOW = 5
+
+USER_RATE_STATE: Dict[str, Dict[str, Any]] = {}
+
+
+def _sanitize_text(raw: str, max_len: int = 500) -> str:
+    """Limpia etiquetas HTML/JS y caracteres de control para evitar XSS o inyección en correos y dashboard."""
+    if not raw:
+        return ""
+    cleaned = re.sub(r"<[^>]*>", "", raw)
+    cleaned = html.escape(cleaned, quote=False)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:max_len]
+
+
+def _check_user_security_limits(user_key: str, is_heavy_action: bool = False) -> Optional[int]:
+    """
+    Evalúa límites de ciberseguridad por usuario (conversación/teléfono):
+    1. Si `is_heavy_action` (análisis de reporte/imagen), exige mínimo 20 segundos desde el último análisis.
+    2. Si el usuario envía más de 5 mensajes en 20 segundos (ataque de flood/bot), bloquea por 20 segundos.
+    Retorna `None` si está permitido, o el número de segundos restantes de espera si está bloqueado.
+    """
+    now = time.time()
+    st = USER_RATE_STATE.setdefault(
+        user_key,
+        {"msg_timestamps": [], "last_heavy_ts": 0.0, "last_warn_ts": 0.0},
+    )
+
+    # Limpiar timestamps fuera de la ventana de 20s
+    st["msg_timestamps"] = [ts for ts in st["msg_timestamps"] if now - ts < FLOOD_WINDOW_SECONDS]
+    st["msg_timestamps"].append(now)
+
+    # 1. Protección contra ráfaga de mensajes (bot flood)
+    if len(st["msg_timestamps"]) > MAX_MESSAGES_PER_WINDOW:
+        wait_s = max(1, int(FLOOD_WINDOW_SECONDS - (now - st["msg_timestamps"][0])))
+        return wait_s
+
+    # 2. Cooldown estricto de 20 segundos entre reportes / análisis de imagen
+    if is_heavy_action:
+        elapsed = now - st["last_heavy_ts"]
+        if elapsed < REPORT_COOLDOWN_SECONDS:
+            return max(1, int(REPORT_COOLDOWN_SECONDS - elapsed))
+        st["last_heavy_ts"] = now
+
+    return None
 
 
 async def broadcast_realtime_event(event_type: str, data: Dict[str, Any]) -> None:
@@ -154,12 +208,17 @@ def _extract_incoming_data(payload: Dict[str, Any]) -> Dict[str, Any]:
     for att in attachments:
         att_type = (att.get("type") or att.get("mimeType") or "").lower()
         url = att.get("url") or att.get("mediaUrl") or att.get("attachmentUrl")
-        if url and ("image" in att_type or not att_type or url.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))):
+        media_id = att.get("mediaId") or att.get("id") or (att.get("payload") or {}).get("id")
+        if not url and media_id and ("image" in att_type or not att_type):
+            url = f"https://zernio.com/api/v1/whatsapp/media/{media_id}"
+        if url and ("image" in att_type or "media" in url.lower() or not att_type or url.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))):
             image_url = url
             break
 
     if not image_url and message.get("mediaUrl"):
         image_url = message.get("mediaUrl")
+    if not image_url and message.get("mediaId"):
+        image_url = f"https://zernio.com/api/v1/whatsapp/media/{message.get('mediaId')}"
 
     gps_coords: Optional[Dict[str, float]] = None
     loc = message.get("location") or {}
@@ -220,7 +279,7 @@ async def _finalize_and_analyze_report(
 
     await zernio.send_text(
         conv_id,
-        "Verificando imagen y descripcion con IA...",
+        "Procesando y verificando evidencia...",
         account_id=acc_id,
     )
 
@@ -231,7 +290,11 @@ async def _finalize_and_analyze_report(
         image_url=session["image_url"],
     )
 
-    # Si el usuario no había tocado el desplegable de anomalías, usamos la categoría que Gemini infirió de la foto+texto
+    # Actualizar la URL de la imagen con la copia pública guardada en nuestro servidor (/static/uploads/...)
+    if ai_result.get("saved_image_url"):
+        session["image_url"] = ai_result["saved_image_url"]
+
+    # Si el usuario no había tocado el desplegable de anomalías, usamos la categoría inferida
     if session["category_title"] == "Determinado por IA" or session["category_id"] == "alert_otro":
         inferred_id = ai_result.get("categoria_inferida_id")
         inferred_cat = next((c for c in ALERT_CATEGORIES if c["id"] == inferred_id), None)
@@ -240,12 +303,11 @@ async def _finalize_and_analyze_report(
             session["category_title"] = inferred_cat["title"]
 
     if not ai_result.get("es_valida", True):
-        motivo = ai_result.get("motivo_rechazo") or "La imagen no coincide con la descripcion enviada."
-        # Limpiamos solo la imagen para que pueda mandar la foto correcta sin perder su texto
+        motivo = ai_result.get("motivo_rechazo") or "La imagen enviada no corresponde a una evidencia real de la anomalia reportada."
         session["image_url"] = None
         await zernio.send_text(
             conv_id,
-            f"No se pudo validar el reporte: {motivo}\nEnvia una foto real que coincida con la descripcion.",
+            f"Reporte rechazado en verificacion: {motivo}\nPor favor envia una fotografia real tomada en el manglar.",
             account_id=acc_id,
         )
         return
@@ -299,11 +361,27 @@ async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
     if not conv_id:
         return
 
-    text = data["text"]
+    user_key = f"{data['sender_phone']}:{conv_id}"
+    text = _sanitize_text(data["text"])
     interactive_id = data["interactive_id"]
     effective_input = data["effective_input"]
     image_url = data["image_url"]
     gps = data["gps"]
+
+    # Control de ciberseguridad: bloqueo anti-flood y cooldown de 20 segundos entre reportes con imagen
+    wait_seconds = _check_user_security_limits(user_key, is_heavy_action=bool(image_url))
+    if wait_seconds is not None:
+        st = USER_RATE_STATE.get(user_key, {})
+        now = time.time()
+        # Solo enviamos 1 mensaje de aviso cada 10s para que un bot atacante no provoque spam de respuestas
+        if now - st.get("last_warn_ts", 0.0) >= 10.0:
+            st["last_warn_ts"] = now
+            await zernio.send_text(
+                conv_id,
+                f"Control de seguridad: por favor espera {wait_seconds} segundos antes de enviar una nueva solicitud.",
+                account_id=acc_id,
+            )
+        return
 
     session = state_mgr.get_session(conv_id)
     lower_text = text.lower()
