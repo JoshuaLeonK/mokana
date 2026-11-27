@@ -116,17 +116,18 @@ class GeminiAnalyst:
 
     def __init__(self) -> None:
         self.api_key = GEMINI_API_KEY
-        self.model = GEMINI_MODEL
+        # Si en el .env viejo de la VPS quedó escrito gemini-2.5-flash, forzamos gemini-3.8-flash que es el modelo activo en Google AI Studio
+        raw_model = GEMINI_MODEL
+        if raw_model == "gemini-2.5-flash":
+            raw_model = "gemini-3.8-flash"
+        self.model = raw_model
         self.client: Optional[genai.Client] = None
         if self.api_key:
             try:
-                if self.api_key.startswith("AQ."):
-                    self.client = genai.Client(vertexai=True, api_key=self.api_key)
-                else:
-                    self.client = genai.Client(api_key=self.api_key)
-            except Exception as exc:
-                logger.warning("Inicializando cliente genai estándar: %s", exc)
                 self.client = genai.Client(api_key=self.api_key)
+            except Exception as exc:
+                logger.warning("No se pudo inicializar SDK google-genai (%s), se usará cliente REST directo.", exc)
+                self.client = None
 
     async def download_and_store_image(self, image_url: str) -> Tuple[Optional[bytes], str, Optional[str]]:
         """
@@ -204,13 +205,13 @@ class GeminiAnalyst:
             },
         }
 
-        endpoints = [
-            f"https://aiplatform.googleapis.com/v1/publishers/google/models/{self.model}:generateContent?key={self.api_key}",
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}",
-        ]
+        candidate_models = [self.model]
+        if "gemini-3.8-flash" not in candidate_models:
+            candidate_models.insert(0, "gemini-3.8-flash")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            for url in endpoints:
+            for model_name in candidate_models:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
                 try:
                     resp = await client.post(url, json=payload)
                     if resp.status_code == 200:
@@ -225,9 +226,9 @@ class GeminiAnalyst:
                             clean_json = text_out.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
                             return json.loads(clean_json)
                     else:
-                        logger.warning("Endpoint Gemini %s devolvió %s: %s", url.split("?")[0], resp.status_code, resp.text[:250])
+                        logger.warning("Endpoint Gemini (%s) devolvió %s: %s", model_name, resp.status_code, resp.text[:250])
                 except Exception as exc:
-                    logger.warning("Excepción llamando endpoint Gemini REST: %s", exc)
+                    logger.warning("Excepción llamando endpoint Gemini REST (%s): %s", model_name, exc)
         return None
 
     async def analyze_report(

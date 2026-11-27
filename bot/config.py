@@ -9,7 +9,7 @@ ZERNIO_WEBHOOK_SECRET = os.getenv("ZERNIO_WEBHOOK_SECRET", "")
 ZERNIO_BASE_URL = os.getenv("ZERNIO_BASE_URL", "https://zernio.com/api/v1").rstrip("/")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 PORT = int(os.getenv("PORT", "8089"))
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://mokana.joshual.tech").rstrip("/")
