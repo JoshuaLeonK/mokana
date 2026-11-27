@@ -71,6 +71,11 @@ if os.path.exists(os.path.join(FRONTEND_PUBLIC_DIR, "assets")):
     )
 
 WEB_USERS = {
+    "adalbertoleonk@gmail.com": {
+        "password": "prueba1234",
+        "role": "cra",
+        "redirect": "/cra",
+    },
     "admin@cra.gov.co": {
         "password": "CraMokana2026!",
         "role": "cra",
