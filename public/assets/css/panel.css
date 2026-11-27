@@ -153,10 +153,21 @@
 .sidebar-footer {
   padding: var(--space-md);
   border-top: var(--rule-hair) solid var(--color-rule);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-xs);
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.logout-btn {
+  width: 100%;
+  height: 36px;
+  text-decoration: none;
+  justify-content: center;
+}
+
+.logout-btn svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
 }
 
 .user-meta {
@@ -549,13 +560,18 @@
 .dash-map-card {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.dash-map-card .panel-head {
+  margin-bottom: 0;
 }
 
 .map-viewport {
   position: relative;
   width: 100%;
-  height: 400px;
+  flex: 1;
+  min-height: 360px;
   background-color: var(--color-paper-2);
   border-radius: var(--radius-card);
   border: var(--rule-hair) solid var(--color-rule);
@@ -568,41 +584,156 @@
 }
 
 .map-viewport--modal {
-  height: 70dvh;
-  min-height: 420px;
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
 }
 
-/* Subecosistemas list inside Estado del ecosistema */
+/* Compact tight 2x2 Subecosistemas Grid under Estado del ecosistema */
 .subeco-list {
   display: grid;
-  border-top: var(--rule-hair) solid var(--color-rule);
-  padding-top: var(--space-xs);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
 }
 
-.subeco-row {
-  padding: var(--space-xs) 0;
-  border-top: var(--rule-hair) solid var(--color-rule);
+.subeco-tile {
+  position: relative;
+  background-color: var(--color-surface);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-card);
+  border-top: 2px solid var(--color-rule-2);
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: space-between;
-  gap: var(--space-sm);
-  font-size: var(--text-xs);
+  gap: var(--space-xs);
+  transition: transform var(--dur-micro) var(--ease-out);
 }
 
-.subeco-row:first-child {
-  border-top: 0;
+.subeco-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-card);
+  -webkit-mask: conic-gradient(at var(--tick) var(--tick), transparent 75%, var(--color-ink) 0) 0 0 / calc(100% - var(--tick)) calc(100% - var(--tick));
+  mask: conic-gradient(at var(--tick) var(--tick), transparent 75%, var(--color-ink) 0) 0 0 / calc(100% - var(--tick)) calc(100% - var(--tick));
+}
+
+.subeco-tile[data-sev="CRÍTICA"] { border-top-color: var(--color-critical-strong); }
+.subeco-tile[data-sev="ALTA"] { border-top-color: var(--color-high); }
+.subeco-tile[data-sev="MEDIA"] { border-top-color: var(--color-moderate); }
+.subeco-tile[data-sev="BAJA"] { border-top-color: var(--color-sage); }
+
+@media (hover: hover) {
+  .subeco-tile:hover {
+    transform: translateY(-1px);
+  }
+}
+
+.subeco-top {
+  display: grid;
+  gap: var(--space-3xs);
 }
 
 .subeco-name {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   font-weight: 400;
+  font-variation-settings: "SHRP" 100;
+  letter-spacing: -0.02em;
   color: var(--color-ink);
+  line-height: 1.2;
 }
 
-.subeco-stats {
-  display: inline-flex;
+.subeco-desc {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  line-height: 1.35;
+}
+
+.subeco-foot {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-xs);
-  flex-shrink: 0;
+  padding-top: var(--space-xs);
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+
+/* Detail Photo Trigger + Proportionate Centered Zoomable Image Lightbox */
+.detail-photo-wrap {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.detail-photo {
+  width: 100%;
+  max-height: 240px;
+  object-fit: cover;
+  border-radius: var(--radius-card);
+  border: var(--rule-hair) solid var(--color-rule);
+  cursor: zoom-in;
+}
+
+.lightbox-dialog {
+  width: min(86vw, 880px);
+  height: min(82dvh, 660px);
+  padding: 0;
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-radius: var(--radius-card);
+  background-color: var(--color-surface);
+  color: var(--color-body);
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  margin: auto;
+}
+
+.lightbox-dialog::backdrop {
+  background-color: var(--color-backdrop);
+}
+
+.lightbox-dialog[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.lightbox-stage-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: var(--space-md);
+  background-color: var(--color-paper-2);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.lightbox-stage-wrap:active {
+  cursor: grabbing;
+}
+
+.lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-card);
+  transform-origin: center center;
+  transform: translate(0px, 0px) scale(1);
+  transition: transform var(--dur-short) var(--ease-out);
+  pointer-events: none;
+}
+
+.lightbox-img[data-dragging="true"] {
+  transition: none;
 }
 
 /* Custom Leaflet Cluster / Alert Pin + Conditional Classification Label */
@@ -1054,7 +1185,8 @@
 
 .map-modal-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 0.8fr);
+  height: min(76dvh, 720px);
   min-height: 0;
   overflow: hidden;
 }
@@ -1062,8 +1194,8 @@
 .map-modal-canvas {
   padding: var(--space-md);
   background-color: var(--color-paper);
-  display: grid;
-  place-items: center;
+  display: flex;
+  min-height: 0;
   overflow: hidden;
   border-right: var(--rule-hair) solid var(--color-rule);
 }
@@ -1110,11 +1242,17 @@
   .export-grid,
   .map-modal-grid {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
   }
 
   .map-modal-canvas {
     border-right: 0;
     border-bottom: var(--rule-hair) solid var(--color-rule);
+    height: 46dvh;
+  }
+
+  .map-viewport--modal {
+    min-height: 260px;
   }
 }
 

@@ -74,11 +74,12 @@
           <span class="user-name">Puerto Verde Logística</span>
           <span class="user-role">operaciones@puertoverde.com</span>
         </div>
-        <a class="btn-line btn-icon" href="/auth/logout.php" aria-label="Cerrar sesión" title="Cerrar sesión">
+        <a class="btn-line logout-btn" href="/auth/logout.php">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
             <polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
           </svg>
+          <span>Cerrar sesión</span>
         </a>
       </div>
     </aside>
@@ -128,15 +129,13 @@
                   </div>
                 </div>
 
-                <div>
-                  <span class="metric-label">Subecosistemas pagados (2 zonas)</span>
-                  <div id="subecosystems-list" class="subeco-list"></div>
-                </div>
-
                 <div class="toolbar-row">
                   <button type="button" class="btn-pill" data-jump-view="alertas">Ir a Gestión de Alertas</button>
                 </div>
               </article>
+
+              <!-- Subecosistemas pagados en cuadritos 2x2 debajo de Estado del ecosistema -->
+              <div id="subecosystems-list" class="subeco-list"></div>
 
               <article class="ticks ticks--compact stack-card">
                 <div class="stack-copy">
@@ -413,6 +412,34 @@
       <button id="btn-close-detail" type="button" class="btn-line">Cerrar</button>
     </header>
     <div id="detail-body" class="dialog-body"></div>
+  </dialog>
+
+  <!-- MODAL DE DETALLE DE CIÉNAGA / SUBECOSISTEMA -->
+  <dialog id="zone-dialog" class="native-dialog native-dialog--detail" aria-labelledby="zone-dialog-title">
+    <header class="dialog-header">
+      <div>
+        <h2 id="zone-dialog-title" class="panel-title">Detalle de subecosistema</h2>
+        <p id="zone-dialog-desc" class="ruled-desc"></p>
+      </div>
+      <button id="btn-close-zone" type="button" class="btn-line">Cerrar</button>
+    </header>
+    <div id="zone-dialog-body" class="dialog-body"></div>
+  </dialog>
+
+  <!-- LIGHTBOX DE IMAGEN COMPLETA CON ZOOM -->
+  <dialog id="image-lightbox" class="lightbox-dialog" aria-labelledby="lightbox-title">
+    <header class="dialog-header">
+      <h2 id="lightbox-title" class="panel-title">Evidencia fotográfica</h2>
+      <div class="toolbar-row">
+        <button id="lb-zoom-out" type="button" class="btn-line btn-icon" aria-label="Alejar imagen">-</button>
+        <button id="lb-zoom-reset" type="button" class="btn-line">100%</button>
+        <button id="lb-zoom-in" type="button" class="btn-line btn-icon" aria-label="Acercar imagen">+</button>
+        <button id="lb-close" type="button" class="btn-pill">Cerrar</button>
+      </div>
+    </header>
+    <div id="lb-stage" class="lightbox-stage-wrap">
+      <img id="lb-img" class="lightbox-img" src="" alt="Imagen ampliada de alerta" data-dragging="false" draggable="false" />
+    </div>
   </dialog>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

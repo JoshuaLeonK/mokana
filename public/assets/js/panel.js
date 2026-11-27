@@ -6,13 +6,13 @@
   const panelType = document.body.dataset.panel || "cra"; // "cra" | "empresa"
   const PAGE_SIZE = 10;
 
-  // Catálogo oficial de subecosistemas del Atlántico (GPS reales)
+  // Catálogo oficial de subecosistemas del Atlántico (GPS reales + breve descripción)
   const ALL_ZONES = [
-    { id: "zone_mallorquin", name: "Ciénaga de Mallorquín", lat: 11.0458, lng: -74.8461 },
-    { id: "zone_balboa", name: "Puerto Colombia", lat: 10.9878, lng: -74.9547 },
-    { id: "zone_tubara", name: "Tubará", lat: 10.8753, lng: -74.9794 },
-    { id: "zone_juan_acosta", name: "Juan de Acosta", lat: 10.8286, lng: -75.0353 },
-    { id: "zone_totumo", name: "Ciénaga del Totumo", lat: 10.7452, lng: -75.2414 },
+    { id: "zone_mallorquin", name: "Ciénaga de Mallorquín", desc: "Laguna costera de mangle rojo y negro junto a Barranquilla.", lat: 11.0458, lng: -74.8461 },
+    { id: "zone_balboa", name: "Puerto Colombia", desc: "Borde litoral y manglar estuarino entre Salgar y Puerto Velero.", lat: 10.9878, lng: -74.9547 },
+    { id: "zone_tubara", name: "Tubará", desc: "Franja costera con humedales y bosque seco de transición.", lat: 10.8753, lng: -74.9794 },
+    { id: "zone_juan_acosta", name: "Juan de Acosta", desc: "Ecosistema de manglar y desembocaduras estacionales costeras.", lat: 10.8286, lng: -75.0353 },
+    { id: "zone_totumo", name: "Ciénaga del Totumo", desc: "Complejo cenagoso limítrofe de alta prioridad de conservación.", lat: 10.7452, lng: -75.2414 },
   ];
 
   const PAID_EMPRESA_IDS = new Set(["zone_mallorquin", "zone_balboa"]);
@@ -189,74 +189,124 @@
       attributionControl: false,
     });
 
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 18,
-      subdomains: "abcd",
     }).addTo(map);
 
     return map;
   }
 
-  function renderKmzInto(map, existingLayer) {
+  // Precompute centroid of each KMZ polygon once for fast real-time thermal interpolation
+  function precomputeKmzCentroids(geojson) {
+    if (!geojson || !Array.isArray(geojson.features)) return;
+    geojson.features.forEach((feat) => {
+      const ring = feat?.geometry?.coordinates?.[0];
+      if (!Array.isArray(ring) || !ring.length) return;
+      let sumLng = 0;
+      let sumLat = 0;
+      for (let i = 0; i < ring.length; i++) {
+        sumLng += ring[i][0];
+        sumLat += ring[i][1];
+      }
+      feat.properties = feat.properties || {};
+      feat.properties._cLng = sumLng / ring.length;
+      feat.properties._cLat = sumLat / ring.length;
+    });
+  }
+
+  // NOAA-style thermal color ramp strictly clipped inside each KMZ polygon boundary
+  function heatStyleForPolygon(feat, items) {
+    if (!items.length || !feat?.properties?._cLat) {
+      return {
+        color: "#5B8F80",
+        weight: 0.8,
+        opacity: 0.55,
+        fillColor: "#8DA28B",
+        fillOpacity: 0.2,
+      };
+    }
+
+    const pLat = feat.properties._cLat;
+    const pLng = feat.properties._cLng;
+    // Gaussian thermal influence (sigma ~ 0.022 deg ≈ 2.4 km) — stacks with more alerts
+    const SIGMA_SQ = 0.022 * 0.022;
+    let heat = 0;
+
+    for (let i = 0; i < items.length; i++) {
+      const a = items[i];
+      const dLat = pLat - a.lat;
+      const dLng = pLng - a.lng;
+      const distSq = dLat * dLat + dLng * dLng;
+      if (distSq > SIGMA_SQ * 9) continue; // Outside 3-sigma cutoff (~7km)
+      const weight = (a.riesgo / 100) * (0.45 + 0.15 * (SEV_RANK[a.sev] || 1));
+      heat += weight * Math.exp(-distSq / (2 * SIGMA_SQ));
+    }
+
+    // Normalize heat into 5 discrete NOAA-like thermal bands (more alerts = darker/deeper crimson)
+    if (heat < 0.08) {
+      return {
+        color: "#5B8F80",
+        weight: 0.7,
+        opacity: 0.45,
+        fillColor: "#8DA28B",
+        fillOpacity: 0.18,
+      };
+    }
+    if (heat < 0.28) {
+      return {
+        color: "#CA8A04",
+        weight: 0.8,
+        opacity: 0.65,
+        fillColor: "#FACC15", // Amarillo térmico
+        fillOpacity: 0.52,
+      };
+    }
+    if (heat < 0.55) {
+      return {
+        color: "#EA580C",
+        weight: 0.9,
+        opacity: 0.75,
+        fillColor: "#FB923C", // Ámbar / Naranja
+        fillOpacity: 0.64,
+      };
+    }
+    if (heat < 0.95) {
+      return {
+        color: "#B91C1C",
+        weight: 1.0,
+        opacity: 0.82,
+        fillColor: "#DC2626", // Rojo intenso
+        fillOpacity: 0.74,
+      };
+    }
+    return {
+      color: "#450A0A",
+      weight: 1.1,
+      opacity: 0.9,
+      fillColor: "#7F1D1D", // Carmesí oscuro (alta concentración de alertas)
+      fillOpacity: 0.84,
+    };
+  }
+
+  function renderKmzInto(map, existingLayer, items) {
     if (!map || !kmzGeoJson) return existingLayer;
     if (existingLayer) map.removeLayer(existingLayer);
     if (!state.showKmz) return null;
 
     return L.geoJSON(kmzGeoJson, {
-      style: {
-        color: "#5B8F80",
-        weight: 1,
-        opacity: 0.75,
-        fillColor: "#8DA28B",
-        fillOpacity: 0.22,
-      },
+      style: (feat) => heatStyleForPolygon(feat, items),
       interactive: false,
     }).addTo(map);
   }
 
-  // Nueva mecánica de Zonas de Calor: entre más alertas en una zona, más oscuro/intenso el color
+  // Renderizado de indicadores con clustering dinámico (sin círculos gigantes que se salgan del polígono)
   function renderHeatAndClusters(map, heatGroup, pinGroup, items, allowClickDetail) {
     if (!map || !heatGroup || !pinGroup) return;
     heatGroup.clearLayers();
     pinGroup.clearLayers();
     if (!items.length) return;
 
-    // 1. Calcular densidad por proximidad geográfica (~3km) para oscurecer el calor
-    const densityMap = new Map();
-    items.forEach((a) => {
-      let count = 0;
-      items.forEach((b) => {
-        const d = Math.hypot(a.lat - b.lat, a.lng - b.lng);
-        if (d < 0.03) count += 1;
-      });
-      densityMap.set(a.radicado, count);
-    });
-
-    items.forEach((f) => {
-      const density = densityMap.get(f.radicado) || 1;
-      // Escala progresiva: 1 alerta = ámbar suave; 2-3 = naranja intenso; 4+ = carmesí oscuro
-      let fill = "#D99B26";
-      let opacity = 0.26;
-      let radius = 2600;
-      if (density >= 4 || f.sev === "CRÍTICA") {
-        fill = "#8F1111";
-        opacity = Math.min(0.68, 0.36 + density * 0.07);
-        radius = 3400;
-      } else if (density >= 2 || f.sev === "ALTA") {
-        fill = "#C94A1A";
-        opacity = Math.min(0.55, 0.30 + density * 0.07);
-        radius = 3000;
-      }
-      L.circle([f.lat, f.lng], {
-        radius,
-        stroke: false,
-        fillColor: fill,
-        fillOpacity: opacity,
-        interactive: false,
-      }).addTo(heatGroup);
-    });
-
-    // 2. Clustering dinámico en pantalla según nivel de zoom actual
+    // Clustering dinámico en pantalla según nivel de zoom actual
     const zoom = map.getZoom();
     const clusterThresholdPx = zoom >= 13 ? 16 : zoom >= 11 ? 34 : 54;
     const clusters = [];
@@ -287,7 +337,7 @@
       }
     });
 
-    // 3. Regla anti-solapamiento: ocultar etiqueta si otro indicador está a < 72px en pantalla
+    // Regla anti-solapamiento: ocultar etiqueta si otro indicador está a < 72px en pantalla
     const LABEL_MIN_DIST_PX = 72;
     const screenPts = clusters.map((c) => {
       const lat = c.latSum / c.items.length;
@@ -342,12 +392,14 @@
 
   function refreshMaps() {
     if (dashMap) {
-      dashKmzLayer = renderKmzInto(dashMap, dashKmzLayer);
-      renderHeatAndClusters(dashMap, dashHeatLayer, dashPinLayer, getTenantReports(), false);
+      const dashItems = getTenantReports();
+      dashKmzLayer = renderKmzInto(dashMap, dashKmzLayer, dashItems);
+      renderHeatAndClusters(dashMap, dashHeatLayer, dashPinLayer, dashItems, false);
     }
     if (modalMap && mapDialog.open) {
-      modalKmzLayer = renderKmzInto(modalMap, modalKmzLayer);
-      renderHeatAndClusters(modalMap, modalHeatLayer, modalPinLayer, getModalMapReports(), true);
+      const modalItems = getModalMapReports();
+      modalKmzLayer = renderKmzInto(modalMap, modalKmzLayer, modalItems);
+      renderHeatAndClusters(modalMap, modalHeatLayer, modalPinLayer, modalItems, true);
     }
   }
 
@@ -356,6 +408,12 @@
     if (dashMap) {
       dashHeatLayer = L.layerGroup().addTo(dashMap);
       dashPinLayer = L.layerGroup().addTo(dashMap);
+      if (typeof ResizeObserver !== "undefined") {
+        new ResizeObserver(() => {
+          dashMap.invalidateSize();
+          renderHeatAndClusters(dashMap, dashHeatLayer, dashPinLayer, getTenantReports(), false);
+        }).observe(document.getElementById("dash-map-viewport"));
+      }
     }
   }
 
@@ -374,6 +432,14 @@
         modalMap.on("zoomend moveend", () => {
           renderHeatAndClusters(modalMap, modalHeatLayer, modalPinLayer, getModalMapReports(), true);
         });
+        if (typeof ResizeObserver !== "undefined") {
+          new ResizeObserver(() => {
+            if (mapDialog.open) {
+              modalMap.invalidateSize();
+              renderHeatAndClusters(modalMap, modalHeatLayer, modalPinLayer, getModalMapReports(), true);
+            }
+          }).observe(document.getElementById("modal-map-viewport"));
+        }
       }
     }
     window.setTimeout(() => {
@@ -459,7 +525,131 @@
     });
   }
 
-  // Modal de Detalle limpio (Radicado, Zona, Anomalía, Prioridad, Informe)
+  // Lightbox de imagen completa con zoom y arrastre (centrado en mitad de pantalla)
+  const lightboxDialog = document.getElementById("image-lightbox");
+  const lbStage = document.getElementById("lb-stage");
+  const lbImg = document.getElementById("lb-img");
+  const lbZoomIn = document.getElementById("lb-zoom-in");
+  const lbZoomOut = document.getElementById("lb-zoom-out");
+  const lbZoomReset = document.getElementById("lb-zoom-reset");
+  const lbClose = document.getElementById("lb-close");
+
+  let lbScale = 1;
+  let lbTx = 0;
+  let lbTy = 0;
+  let lbDragging = false;
+  let lbSx = 0;
+  let lbSy = 0;
+
+  function clampLightboxPan() {
+    if (!lbStage || !lbImg) return;
+    const maxX = Math.max(0, (lbImg.offsetWidth * (lbScale - 1)) / 2 + 40);
+    const maxY = Math.max(0, (lbImg.offsetHeight * (lbScale - 1)) / 2 + 40);
+    lbTx = Math.max(-maxX, Math.min(maxX, lbTx));
+    lbTy = Math.max(-maxY, Math.min(maxY, lbTy));
+  }
+
+  function applyLightboxTransform() {
+    clampLightboxPan();
+    lbImg.style.transform = `translate(${lbTx}px, ${lbTy}px) scale(${lbScale})`;
+    lbZoomReset.textContent = `${Math.round(lbScale * 100)}%`;
+  }
+
+  function setLbZoom(next) {
+    lbScale = Math.max(1, Math.min(3.5, Number(next.toFixed(2))));
+    if (lbScale === 1) {
+      lbTx = 0;
+      lbTy = 0;
+    }
+    applyLightboxTransform();
+  }
+
+  function openImageLightbox(url, title) {
+    lbImg.onload = () => setLbZoom(1);
+    lbImg.src = url;
+    document.getElementById("lightbox-title").textContent = title || "Evidencia fotográfica";
+    setLbZoom(1);
+    lightboxDialog.showModal();
+  }
+
+  lbZoomIn.addEventListener("click", () => setLbZoom(lbScale + 0.4));
+  lbZoomOut.addEventListener("click", () => setLbZoom(lbScale - 0.4));
+  lbZoomReset.addEventListener("click", () => setLbZoom(1));
+  lbClose.addEventListener("click", () => lightboxDialog.close());
+  lightboxDialog.addEventListener("click", (e) => {
+    if (e.target === lightboxDialog) lightboxDialog.close();
+  });
+
+  lbStage.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    setLbZoom(lbScale + (e.deltaY < 0 ? 0.25 : -0.25));
+  }, { passive: false });
+
+  lbStage.addEventListener("pointerdown", (e) => {
+    if (lbScale <= 1) return;
+    lbDragging = true;
+    lbSx = e.clientX - lbTx;
+    lbSy = e.clientY - lbTy;
+    lbImg.dataset.dragging = "true";
+    lbStage.setPointerCapture(e.pointerId);
+  });
+
+  lbStage.addEventListener("pointermove", (e) => {
+    if (!lbDragging) return;
+    lbTx = e.clientX - lbSx;
+    lbTy = e.clientY - lbSy;
+    applyLightboxTransform();
+  });
+
+  const endLbDrag = () => {
+    lbDragging = false;
+    lbImg.dataset.dragging = "false";
+  };
+  lbStage.addEventListener("pointerup", endLbDrag);
+  lbStage.addEventListener("pointercancel", endLbDrag);
+
+  // Modal de Detalle de Ciénaga / Subecosistema
+  const zoneDialog = document.getElementById("zone-dialog");
+  document.getElementById("btn-close-zone").addEventListener("click", () => zoneDialog.close());
+  zoneDialog.addEventListener("click", (e) => {
+    if (e.target === zoneDialog) zoneDialog.close();
+  });
+
+  function openZoneDetailModal(zone, zAlerts) {
+    document.getElementById("zone-dialog-title").textContent = zone.name;
+    document.getElementById("zone-dialog-desc").textContent = zone.desc;
+    const body = document.getElementById("zone-dialog-body");
+    body.innerHTML = "";
+
+    if (!zAlerts.length) {
+      body.innerHTML = `<div class="empty-box"><strong>Sin alertas activas en ${zone.name}.</strong><span class="ruled-desc">Este subecosistema se encuentra estable en este momento.</span></div>`;
+      zoneDialog.showModal();
+      return;
+    }
+
+    const list = document.createElement("div");
+    list.className = "ruled-list";
+    zAlerts.forEach((f) => {
+      const row = document.createElement("div");
+      row.className = "ruled-row";
+      row.innerHTML = `
+        <span class="ruled-copy">
+          <span class="ruled-title">${f.radicado} (${f.anomalia})</span>
+          <span class="ruled-desc">${f.informe}</span>
+        </span>
+        <span class="toolbar-row">
+          <span class="badge badge--${f.sev}">${f.prioridad}</span>
+          <button type="button" class="btn-line">Ver detalle</button>
+        </span>
+      `;
+      row.querySelector("button").addEventListener("click", () => openReportDetail(f));
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+    zoneDialog.showModal();
+  }
+
+  // Modal de Detalle limpio (Radicado, Zona, Anomalía, Prioridad, Informe + Visor imagen completa)
   const detailDialog = document.getElementById("detail-dialog");
   document.getElementById("btn-close-detail").addEventListener("click", () => detailDialog.close());
   detailDialog.addEventListener("click", (e) => {
@@ -470,7 +660,14 @@
     document.getElementById("detail-title").textContent = `Radicado: ${f.radicado}`;
     const body = document.getElementById("detail-body");
     const photoHtml = f.imageUrl
-      ? `<img class="detail-photo" src="${f.imageUrl}" alt="Evidencia de ${f.radicado}" onerror="this.style.display='none'" />`
+      ? `
+        <div class="detail-photo-wrap" id="detail-photo-wrap">
+          <img id="detail-photo-img" class="detail-photo" src="${f.imageUrl}" alt="Evidencia de ${f.radicado}" onerror="document.getElementById('detail-photo-wrap').style.display='none'" />
+          <div class="toolbar-row">
+            <button id="btn-open-lightbox" type="button" class="btn-line">Ver imagen completa (Zoom)</button>
+          </div>
+        </div>
+      `
       : "";
 
     body.innerHTML = `
@@ -488,6 +685,12 @@
         </div>
       </div>
     `;
+
+    const imgEl = document.getElementById("detail-photo-img");
+    const lbBtn = document.getElementById("btn-open-lightbox");
+    if (imgEl) imgEl.addEventListener("click", () => openImageLightbox(f.imageUrl, `Evidencia: ${f.radicado}`));
+    if (lbBtn) lbBtn.addEventListener("click", () => openImageLightbox(f.imageUrl, `Evidencia: ${f.radicado}`));
+
     detailDialog.showModal();
   }
 
@@ -541,16 +744,29 @@
       if (zAlerts.length > 0) affectedMaxRisks.push(maxRisk);
       const level = sevFromScore(maxRisk);
 
-      const row = document.createElement("div");
-      row.className = "subeco-row";
-      row.innerHTML = `
-        <span class="subeco-name">${z.name}</span>
-        <span class="subeco-stats">
-          <span class="ruled-desc num">${zAlerts.length} al.</span>
-          <span class="badge badge--${level.sev}">${maxRisk}/100</span>
-        </span>
+      const tile = document.createElement("article");
+      tile.className = "subeco-tile";
+      tile.dataset.sev = level.sev;
+      tile.setAttribute("role", "button");
+      tile.setAttribute("tabindex", "0");
+      tile.style.cursor = "pointer";
+      tile.innerHTML = `
+        <div class="subeco-top">
+          <h3 class="subeco-name">${z.name}</h3>
+          <p class="subeco-desc">${z.desc}</p>
+        </div>
+        <div class="subeco-foot">
+          <span class="badge badge--${level.sev}">${level.label}</span>
+        </div>
       `;
-      subList.appendChild(row);
+      tile.addEventListener("click", () => openZoneDetailModal(z, zAlerts));
+      tile.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openZoneDetailModal(z, zAlerts);
+        }
+      });
+      subList.appendChild(tile);
     });
 
     // Promedio de los riesgos máximos de las zonas afectadas (0–100)
@@ -759,6 +975,7 @@
       const res = await fetch("/assets/data/prioridades_atlantico.geojson");
       if (res.ok) {
         kmzGeoJson = await res.json();
+        precomputeKmzCentroids(kmzGeoJson);
         refreshMaps();
       }
     } catch {
