@@ -240,6 +240,27 @@ class EmailNotifier:
                             status = "failed"
                             error_msg = resp.text
                             logger.error("Error de Resend API (%s) enviando a %s: %s", resp.status_code, to_email, resp.text)
+                            # Si Resend está en modo sandbox (sin dominio verificado) y solo permite enviar a joshualion9@gmail.com,
+                            # redirigimos automáticamente la entrega a joshualion9@gmail.com para que en la demo siempre llegue el correo real
+                            if resp.status_code == 403 and "joshualion9@gmail.com" in resp.text and to_email != "joshualion9@gmail.com":
+                                logger.info("Redirigiendo entrega sandbox de %s hacia joshualion9@gmail.com", to_email)
+                                resp_fb = await client.post(
+                                    "https://api.resend.com/emails",
+                                    headers={
+                                        "Authorization": f"Bearer {api_key}",
+                                        "Content-Type": "application/json",
+                                    },
+                                    json={
+                                        "from": "Mokana C.R.A. <onboarding@resend.dev>",
+                                        "to": ["joshualion9@gmail.com"],
+                                        "subject": f"{subject} (Copia de: {to_email})",
+                                        "html": html_body,
+                                    },
+                                )
+                                if resp_fb.status_code in (200, 201):
+                                    resend_id = resp_fb.json().get("id")
+                                    status = "sent_via_sandbox_owner"
+                                    error_msg = None
                     except Exception as exc:
                         status = "failed"
                         error_msg = str(exc)

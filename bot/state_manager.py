@@ -13,8 +13,21 @@ SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings_db.json")
 
 DEFAULT_SUBSCRIBERS = [
     {
+        "id": "sub_cra_joshua",
+        "name": "Centro de Control C.R.A. (Principal)",
+        "email": "joshualion9@gmail.com",
+        "organization": "C.R.A. - Corporacion Autonoma Regional del Atlantico",
+        "type": "CRA",
+        "plan": "INSTITUCIONAL",
+        "zones": ["*"],
+        "categories": ["*"],
+        "min_severity": "BAJA",
+        "active": True,
+        "created_at": "2026-11-27T12:00:00Z",
+    },
+    {
         "id": "sub_cra_control",
-        "name": "Adalberto Leon - Responsable C.R.A. (Prueba)",
+        "name": "Adalberto Leon - Responsable C.R.A.",
         "email": "adalbertoleonk@gmail.com",
         "organization": "C.R.A. - Corporacion Autonoma Regional del Atlantico",
         "type": "CRA",
