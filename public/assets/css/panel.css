@@ -555,28 +555,203 @@
 .map-viewport {
   position: relative;
   width: 100%;
-  aspect-ratio: 691 / 641;
-  max-height: 430px;
-  margin: 0 auto;
-  background-color: var(--color-map-sea);
+  height: 400px;
+  background-color: var(--color-paper-2);
   border-radius: var(--radius-card);
+  border: var(--rule-hair) solid var(--color-rule);
   overflow: hidden;
-  user-select: none;
+  z-index: var(--z-base);
 }
 
 .map-viewport--clickable {
   cursor: pointer;
 }
 
-.map-viewport--interactive {
-  max-height: 70dvh;
-  cursor: grab;
-  touch-action: none;
+.map-viewport--modal {
+  height: 70dvh;
+  min-height: 420px;
 }
 
-.map-viewport--interactive:active {
-  cursor: grabbing;
+/* Subecosistemas list inside Estado del ecosistema */
+.subeco-list {
+  display: grid;
+  border-top: var(--rule-hair) solid var(--color-rule);
+  padding-top: var(--space-xs);
 }
+
+.subeco-row {
+  padding: var(--space-xs) 0;
+  border-top: var(--rule-hair) solid var(--color-rule);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  font-size: var(--text-xs);
+}
+
+.subeco-row:first-child {
+  border-top: 0;
+}
+
+.subeco-name {
+  font-weight: 400;
+  color: var(--color-ink);
+}
+
+.subeco-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+/* Custom Leaflet Cluster / Alert Pin + Conditional Classification Label */
+.mokana-pin-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.mokana-pin-dot {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--color-surface);
+  color: var(--color-surface);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-subtle);
+}
+
+.mokana-pin-dot--CRÍTICA { background-color: var(--color-critical-strong); }
+.mokana-pin-dot--ALTA { background-color: var(--color-high); }
+.mokana-pin-dot--MEDIA { background-color: var(--color-moderate); }
+.mokana-pin-dot--BAJA { background-color: var(--color-low); }
+
+.mokana-pin-label {
+  margin-top: 2px;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-surface);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.mokana-pin-label--hidden {
+  display: none;
+}
+
+/* Geolocation FlyTo Pulse Ring */
+.geo-pulse-ring {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid var(--color-critical-strong);
+  transform: translate(-50%, -50%) scale(0.5);
+  opacity: 1;
+  animation: geo-locate 900ms var(--ease-out) 2 forwards;
+}
+
+@keyframes geo-locate {
+  to {
+    transform: translate(-50%, -50%) scale(1.9);
+    opacity: 0;
+  }
+}
+
+/* Conditional scrollbar on Map Modal Alerts List (shows only when > 5 items) */
+.map-alerts-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: var(--space-2xs);
+}
+
+/* Map Modal Filter Bar */
+.map-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.filter-select {
+  height: 34px;
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-pill);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-size: var(--text-xs);
+}
+
+/* Gestión de Alertas Filter Bar & Pagination */
+.alerts-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-md);
+}
+
+.pagination-bar {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: var(--rule-hair) solid var(--color-rule);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+
+.page-btn {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 var(--space-sm);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-ink);
+  box-shadow: inset 0 0 0 var(--rule-hair) var(--color-rule-2);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.page-btn[aria-current="page"] {
+  background-color: var(--color-accent);
+  color: var(--color-accent-ink);
+  box-shadow: none;
+}
+
+.page-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Heat Zone Legend Swatches */
+.swatch--heat-low { background-color: var(--color-moderate-bg); border: 1px solid var(--color-moderate); }
+.swatch--heat-mid { background-color: var(--color-high); }
+.swatch--heat-high { background-color: var(--color-critical-strong); }
+.swatch--kmz { background-color: var(--color-water); }
 
 .map-stage {
   position: relative;
