@@ -126,6 +126,26 @@ class ZernioClient:
         }
         return await self._post_message(conversation_id, payload)
 
+    async def send_location_request(
+        self,
+        conversation_id: str,
+        body_text: str,
+        account_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Envía el componente interactivo nativo de WhatsApp `location_request_message`
+        que muestra el botón oficial 'Enviar ubicación' para capturar latitud y longitud exactas.
+        """
+        payload: Dict[str, Any] = {
+            "accountId": account_id or self.default_account_id,
+            "interactive": {
+                "type": "location_request_message",
+                "body": {"text": body_text},
+                "action": {"name": "send_location"},
+            },
+        }
+        return await self._post_message(conversation_id, payload)
+
     async def _post_message(self, conversation_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         if not self.api_key:
             logger.warning("ZERNIO_API_KEY no configurada. Simulando envío a %s: %s", conversation_id, payload)

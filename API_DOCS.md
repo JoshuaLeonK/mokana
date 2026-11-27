@@ -136,7 +136,40 @@ eventSource.onmessage = (e) => {
 
 ---
 
-### 3.2. Obtener un reporte específico por ID
+### 3.2. Descargar Informe General en Formatos de Datos Abiertos (CSV, GeoJSON, JSON)
+**`GET /api/reports/export`**
+
+Permite al Panel de Administración (y a suscriptores de Academia/Empresas) descargar con un solo clic el **Informe General de Monitoreo** en estándares oficiales de **Datos Abiertos**:
+
+* **Query Params:**
+  * `format`:
+    * **`csv`** *(por defecto)* → Descarga `mokana_informe_general_manglares_YYYYMMDD.csv` (codificado en UTF-8 con BOM para abrir directamente en **Microsoft Excel, Power BI, R o Python** con las 26 columnas técnicas separadas).
+    * **`geojson`** → Descarga `mokana_manglares_atlantico_YYYYMMDD.geojson` (`FeatureCollection` estándar RFC 7946 / WGS84 listo para cargar en **QGIS, ArcGIS de la C.R.A. e INVEMAR, Mapbox o Leaflet**).
+    * **`json`** → Descarga `mokana_informe_general_YYYYMMDD.json` (Dataset completo con metadatos de Datos Abiertos Colombia, resumen estadístico ejecutivo, catálogo de zonas y todos los expedientes).
+  * `zone_id` *(opcional)*: Filtrar el informe solo para una zona (ej. `zone_mallorquin`).
+  * `severity` *(opcional)*: Filtrar por nivel de severidad (`CRÍTICA`, `ALTA`, `MEDIA`, `BAJA`).
+
+#### Ejemplos de botones de descarga directa en el Frontend (HTML / React):
+```html
+<!-- Botón 1: Descargar en Excel / CSV -->
+<a href="https://mokana.joshual.tech/api/reports/export?format=csv" download>
+  Descargar Informe General (CSV / Excel)
+</a>
+
+<!-- Botón 2: Descargar en GeoJSON para SIG / ArcGIS -->
+<a href="https://mokana.joshual.tech/api/reports/export?format=geojson" download>
+  Descargar Capa Geográfica (GeoJSON)
+</a>
+
+<!-- Botón 3: Descargar Dataset Datos Abiertos (JSON) -->
+<a href="https://mokana.joshual.tech/api/reports/export?format=json" download>
+  Descargar Dataset Datos Abiertos (JSON)
+</a>
+```
+
+---
+
+### 3.3. Obtener un reporte específico por ID
 **`GET /api/reports/{report_id}`**  
 Ejemplo: `GET https://mokana.joshual.tech/api/reports/MKN-2026-0001`
 

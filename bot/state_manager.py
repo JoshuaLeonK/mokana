@@ -277,13 +277,24 @@ class StateManager:
                 return r
         return None
 
-    def update_report_gps(self, report_id: str, lat: float, lng: float) -> Optional[Dict[str, Any]]:
+    def update_report_gps(
+        self,
+        report_id: str,
+        lat: float,
+        lng: float,
+        location_name: Optional[str] = None,
+        address: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         reports = self.list_reports()
         for r in reports:
             if r["id"] == report_id:
                 r["location"]["lat"] = lat
                 r["location"]["lng"] = lng
                 r["location"]["has_exact_gps"] = True
+                if location_name:
+                    r["location"]["location_name"] = location_name
+                if address:
+                    r["location"]["address"] = address
                 r["updated_at"] = datetime.now(timezone.utc).isoformat()
                 self._write_reports(reports)
                 return r

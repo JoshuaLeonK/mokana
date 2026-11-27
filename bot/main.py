@@ -1,15 +1,18 @@
 import asyncio
+import csv
 import html
+import io
 import json
 import logging
 import os
 import re
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import quote
 from fastapi import FastAPI, BackgroundTasks, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -220,18 +223,25 @@ def _extract_incoming_data(payload: Dict[str, Any]) -> Dict[str, Any]:
     if not image_url and message.get("mediaId"):
         image_url = f"https://zernio.com/api/v1/whatsapp/media/{message.get('mediaId')}"
 
-    gps_coords: Optional[Dict[str, float]] = None
-    loc = message.get("location") or {}
+    gps_coords: Optional[Dict[str, Any]] = None
+    loc = (
+        metadata.get("location")
+        or message.get("location")
+        or payload.get("location")
+        or {}
+    )
     if not loc and attachments:
         for att in attachments:
             if (att.get("type") or "").lower() == "location":
-                loc = att
+                loc = att.get("payload") or att
                 break
     if loc and ("latitude" in loc or "lat" in loc):
         try:
             gps_coords = {
-                "lat": float(loc.get("latitude") or loc.get("lat")),
-                "lng": float(loc.get("longitude") or loc.get("lng")),
+                "lat": float(loc.get("latitude") if loc.get("latitude") is not None else loc.get("lat")),
+                "lng": float(loc.get("longitude") if loc.get("longitude") is not None else loc.get("lng")),
+                "name": loc.get("name"),
+                "address": loc.get("address"),
             }
         except (TypeError, ValueError):
             gps_coords = None
@@ -337,7 +347,8 @@ async def _finalize_and_analyze_report(
         f"Zona: {session['zone_title']}\n"
         f"Anomalia: {session['category_title']}\n"
         f"Prioridad: {cra_rep['nivel_severidad']} (Riesgo {cra_rep['indice_riesgo_ambiental']}/100)\n"
-        f"Informe: {cra_rep['titulo_hallazgo']}. {cra_rep['accion_recomendada_cra']}"
+        f"Informe: {cra_rep['titulo_hallazgo']}. {cra_rep['accion_recomendada_cra']}\n\n"
+        f"Opcional: Toca el boton de abajo para enviar tu ubicacion GPS exacta del incidente."
     )
 
     state_mgr.reset_session(conv_id)
@@ -345,7 +356,8 @@ async def _finalize_and_analyze_report(
     session_after["last_report_id"] = saved_record["id"]
     session_after["step"] = ConversationStep.WAITING_OPTIONAL_GPS
 
-    await zernio.send_text(conv_id, final_message, account_id=acc_id)
+    # Enviamos el mensaje de cierre con el botón interactivo nativo de WhatsApp "Enviar ubicación"
+    await zernio.send_location_request(conv_id, final_message, account_id=acc_id)
 
 
 async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
@@ -394,16 +406,30 @@ async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
         await zernio.send_zone_list(conv_id, account_id=acc_id)
         return
 
-    # Si envía un Pin GPS
+    # Si envía un Pin GPS (antes o después de finalizar el reporte)
     if gps:
         session["gps"] = gps
-        if session.get("last_report_id"):
-            updated = state_mgr.update_report_gps(session["last_report_id"], gps["lat"], gps["lng"])
+        target_report_id = session.get("last_report_id")
+        # Si la sesión se reinició pero el usuario acaba de enviar un reporte hace poco, buscamos su último reporte por conversation_id
+        if not target_report_id:
+            for existing_rep in state_mgr.list_reports():
+                if existing_rep.get("conversation_id") == conv_id:
+                    target_report_id = existing_rep["id"]
+                    break
+
+        if target_report_id:
+            updated = state_mgr.update_report_gps(
+                target_report_id,
+                gps["lat"],
+                gps["lng"],
+                location_name=gps.get("name"),
+                address=gps.get("address"),
+            )
             if updated:
                 await broadcast_realtime_event("report.updated", updated)
             await zernio.send_text(
                 conv_id,
-                f"Ubicacion GPS actualizada en el reporte {session['last_report_id']}.",
+                f"Coordenadas GPS registradas ({gps['lat']:.5f}, {gps['lng']:.5f}) en el expediente {target_report_id}.",
                 account_id=acc_id,
             )
             return
@@ -639,6 +665,191 @@ async def get_reports(
     if status:
         reports = [r for r in reports if (r.get("status") or "").upper() == status.upper()]
     return {"count": len(reports), "reports": reports}
+
+
+@app.get("/api/reports/export")
+async def export_open_data_report(
+    format: str = Query(
+        default="csv",
+        description="Formato de datos abiertos: 'csv' (Excel / Datos.gov.co), 'geojson' (SIG / ArcGIS / QGIS) o 'json' (Informe General Completo)",
+    ),
+    zone_id: Optional[str] = Query(default=None, description="Filtrar opcionalmente por zona"),
+    severity: Optional[str] = Query(default=None, description="Filtrar opcionalmente por severidad"),
+) -> Response:
+    """
+    Descarga el Informe General de Monitoreo de Manglares del Atlántico en formatos estándar de Datos Abiertos:
+    - `csv`: Archivo CSV (UTF-8 con BOM compatible con Excel, Power BI, R, Pandas y portal Datos Abiertos Colombia).
+    - `geojson`: Colección geográfica RFC 7946 lista para importar en QGIS, ArcGIS (C.R.A. / INVEMAR), Mapbox o Leaflet.
+    - `json`: Dataset estructurado completo con resumen ejecutivo, metadatos de esquema y todos los expedientes.
+    """
+    reports = state_mgr.list_reports()
+    if zone_id:
+        reports = [r for r in reports if r.get("location", {}).get("zone_id") == zone_id]
+    if severity:
+        reports = [
+            r
+            for r in reports
+            if (r.get("cra_technical_report", {}).get("nivel_severidad") or "").upper() == severity.upper()
+        ]
+
+    fmt = format.strip().lower()
+    timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+
+    # 1. FORMATO CSV (Estándar Datos Abiertos / Excel)
+    if fmt == "csv":
+        output = io.StringIO()
+        # BOM UTF-8 para que Microsoft Excel en español abra tildes y caracteres especiales sin errores
+        output.write("\ufeff")
+        writer = csv.writer(output, delimiter=",", quoting=csv.QUOTE_MINIMAL)
+        writer.writerow([
+            "radicado_id",
+            "fecha_creacion_utc",
+            "fecha_actualizacion_utc",
+            "estado_gestion_cra",
+            "dependencia_asignada",
+            "zona_id",
+            "zona_manglar",
+            "latitud",
+            "longitud",
+            "gps_exacto_usuario",
+            "categoria_id",
+            "categoria_reportada",
+            "subcategoria_tecnica_cra",
+            "nivel_severidad",
+            "indice_riesgo_0_100",
+            "sla_respuesta_horas",
+            "titulo_hallazgo",
+            "descripcion_ciudadano",
+            "hallazgo_visual_campo",
+            "diagnostico_fisicoquimico",
+            "parametros_comprometidos",
+            "especies_en_riesgo",
+            "normativa_aplicable",
+            "accion_recomendada_cra",
+            "evidencia_fotografica_url",
+            "etiquetas_datos_abiertos",
+        ])
+
+        for r in reports:
+            loc = r.get("location", {})
+            inc = r.get("incident", {})
+            cra = r.get("cra_technical_report", {})
+            writer.writerow([
+                r.get("id", ""),
+                r.get("created_at", ""),
+                r.get("updated_at", ""),
+                r.get("status", ""),
+                r.get("assigned_to", ""),
+                loc.get("zone_id", ""),
+                loc.get("zone_title", ""),
+                loc.get("lat", ""),
+                loc.get("lng", ""),
+                "SI" if loc.get("has_exact_gps") else "NO",
+                inc.get("category_id", ""),
+                inc.get("category_title", ""),
+                cra.get("subcategoria_tecnica_cra", ""),
+                cra.get("nivel_severidad", ""),
+                cra.get("indice_riesgo_ambiental", ""),
+                cra.get("sla_tiempo_respuesta_horas", ""),
+                cra.get("titulo_hallazgo", ""),
+                inc.get("citizen_description", ""),
+                cra.get("hallazgo_visual", ""),
+                cra.get("hipotesis_ambiental_quimica", ""),
+                "; ".join(cra.get("parametros_fisicoquimicos_alterados") or []),
+                "; ".join(cra.get("especies_mangle_riesgo") or []),
+                cra.get("normativa_aplicable", ""),
+                cra.get("accion_recomendada_cra", ""),
+                inc.get("image_url", ""),
+                " ".join(cra.get("etiquetas_datos") or []),
+            ])
+
+        csv_bytes = output.getvalue().encode("utf-8")
+        filename = f"mokana_informe_general_manglares_{timestamp_str}.csv"
+        return Response(
+            content=csv_bytes,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # 2. FORMATO GEOJSON (Estándar SIG / ArcGIS / QGIS RFC 7946)
+    if fmt == "geojson":
+        features = []
+        for r in reports:
+            loc = r.get("location", {})
+            inc = r.get("incident", {})
+            cra = r.get("cra_technical_report", {})
+            lat = float(loc.get("lat") or 11.0458)
+            lng = float(loc.get("lng") or -74.8461)
+            features.append({
+                "type": "Feature",
+                "id": r.get("id"),
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [lng, lat],
+                },
+                "properties": {
+                    "id": r.get("id"),
+                    "created_at": r.get("created_at"),
+                    "status": r.get("status"),
+                    "assigned_to": r.get("assigned_to"),
+                    "zone_id": loc.get("zone_id"),
+                    "zone_title": loc.get("zone_title"),
+                    "has_exact_gps": loc.get("has_exact_gps", False),
+                    "category_id": inc.get("category_id"),
+                    "category_title": inc.get("category_title"),
+                    "citizen_description": inc.get("citizen_description"),
+                    "image_url": inc.get("image_url"),
+                    "nivel_severidad": cra.get("nivel_severidad"),
+                    "indice_riesgo_ambiental": cra.get("indice_riesgo_ambiental"),
+                    "subcategoria_tecnica_cra": cra.get("subcategoria_tecnica_cra"),
+                    "sla_tiempo_respuesta_horas": cra.get("sla_tiempo_respuesta_horas"),
+                    "titulo_hallazgo": cra.get("titulo_hallazgo"),
+                    "hipotesis_ambiental_quimica": cra.get("hipotesis_ambiental_quimica"),
+                    "parametros_fisicoquimicos_alterados": cra.get("parametros_fisicoquimicos_alterados", []),
+                    "especies_mangle_riesgo": cra.get("especies_mangle_riesgo", []),
+                    "normativa_aplicable": cra.get("normativa_aplicable"),
+                    "accion_recomendada_cra": cra.get("accion_recomendada_cra"),
+                },
+            })
+
+        geojson_payload = {
+            "type": "FeatureCollection",
+            "metadata": {
+                "dataset": "Sistema Mokana - Monitoreo en Tiempo Real de Manglares del Atlántico",
+                "authority": "C.R.A. - Corporación Autónoma Regional del Atlántico",
+                "crs": "EPSG:4326 (WGS84)",
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "total_features": len(features),
+            },
+            "features": features,
+        }
+        filename = f"mokana_manglares_atlantico_{timestamp_str}.geojson"
+        return Response(
+            content=json.dumps(geojson_payload, ensure_ascii=False, indent=2).encode("utf-8"),
+            media_type="application/geo+json; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # 3. FORMATO JSON (Dataset Completo de Datos Abiertos + Resumen General)
+    stats = await get_dashboard_stats()
+    open_data_json = {
+        "metadata": {
+            "dataset_title": "Informe General de Monitoreo y Alertas Tempranas en Manglares del Atlántico — Sistema Mokana",
+            "organization": "C.R.A. (Corporación Autónoma Regional del Atlántico) & Red Mokana",
+            "license": "Open Data Commons Attribution License (ODC-By) / Datos Abiertos Colombia",
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "total_records": len(reports),
+        },
+        "executive_summary": stats,
+        "zones_catalog": MANGROVE_ZONES,
+        "records": reports,
+    }
+    filename = f"mokana_informe_general_{timestamp_str}.json"
+    return Response(
+        content=json.dumps(open_data_json, ensure_ascii=False, indent=2).encode("utf-8"),
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/reports/{report_id}")
