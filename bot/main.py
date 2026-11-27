@@ -308,7 +308,9 @@ async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
     session = state_mgr.get_session(conv_id)
     lower_text = text.lower()
 
-    # Comandos de reinicio
+    # 1. Comandos de saludo/reinicio cuando NO mencionan ninguna zona ni traen imagen
+    detected_zone_in_text = state_mgr.detect_zone_from_text(interactive_id or "") or state_mgr.detect_zone_from_text(text)
+
     if lower_text in {"hola", "inicio", "menu", "menú", "nuevo", "reiniciar", "cancelar"} and not image_url:
         session = state_mgr.reset_session(conv_id)
         await zernio.send_zone_list(conv_id, account_id=acc_id)
@@ -328,34 +330,44 @@ async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
             )
             return
 
-    # 1. ¿El usuario seleccionó una Zona del desplegable o mandó el mensaje automático del Tótem QR/NFC?
-    is_totem_greeting = "totem" in lower_text or "tótem" in lower_text or "reportando desde" in lower_text
-    detected_zone = state_mgr.detect_zone_from_text(interactive_id or "") or (
-        state_mgr.detect_zone_from_text(text) if (is_totem_greeting or not session.get("zone_id")) else None
+    # 2. ¿El mensaje es para indicar/seleccionar la ZONA del manglar?
+    # Ejemplos: "hola estoy en mallorquin", link del Tótem QR/NFC, o clic en el desplegable de zonas
+    is_totem_or_location_greeting = any(
+        phrase in lower_text
+        for phrase in ("totem", "tótem", "reportando desde", "estoy en", "hola")
     )
+    has_incident_keywords = state_mgr.detect_category_from_text(text) is not None
 
-    if detected_zone and (
+    if detected_zone_in_text and (
         (interactive_id and interactive_id.startswith("zone_"))
-        or is_totem_greeting
-        or (not image_url and text.strip().lower() == detected_zone["title"].lower())
+        or session["step"] == ConversationStep.WAITING_ZONE
+        or (is_totem_or_location_greeting and not image_url and not has_incident_keywords)
     ):
-        session["zone_id"] = detected_zone["id"]
-        session["zone_title"] = detected_zone["title"]
-        session["zone_coords"] = detected_zone["coords"]
+        # Si venía de un saludo tipo "hola estoy en mallorquin" sin foto ni anomalía, reiniciamos limpio en esa zona
+        if is_totem_or_location_greeting and not image_url and not has_incident_keywords:
+            session = state_mgr.reset_session(conv_id)
+
+        session["zone_id"] = detected_zone_in_text["id"]
+        session["zone_title"] = detected_zone_in_text["title"]
+        session["zone_coords"] = detected_zone_in_text["coords"]
         session["step"] = ConversationStep.WAITING_CATEGORY
 
-        # Si ya había enviado antes foto y descripción, analiza de inmediato
-        if session.get("image_url") and session.get("description"):
+        # Solo si en ese mismo mensaje ya mandó una FOTO + una descripción real de anomalía, analiza directo
+        if image_url and has_incident_keywords:
+            session["image_url"] = image_url
+            session["description"] = text
             await _finalize_and_analyze_report(conv_id, acc_id, data, session)
             return
 
-        await zernio.send_category_list(conv_id, detected_zone["title"], account_id=acc_id)
+        # De lo contrario, pasa al Paso 2: Mostrar el desplegable de Anomalías
+        await zernio.send_category_list(conv_id, detected_zone_in_text["title"], account_id=acc_id)
         return
 
-    # 2. ¿El usuario seleccionó una Anomalía del desplegable?
-    detected_cat = state_mgr.detect_category_from_text(interactive_id or "")
-    if not detected_cat and not image_url:
-        # Si tocó una opción del desplegable y Zernio mandó el título de la fila en `text`
+    # 3. ¿El usuario seleccionó una Anomalía del desplegable?
+    detected_cat = None
+    if interactive_id and interactive_id.startswith("alert_"):
+        detected_cat = state_mgr.detect_category_from_text(interactive_id)
+    elif not image_url:
         for cat in ALERT_CATEGORIES:
             if text.strip().lower() == cat["title"].lower() or text.strip().lower() == cat["id"].lower():
                 detected_cat = cat
@@ -366,7 +378,6 @@ async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
         session["category_title"] = detected_cat["title"]
         session["step"] = ConversationStep.WAITING_DESCRIPTION
 
-        # Si ya teníamos imagen y descripción guardadas, procesamos de inmediato
         if session.get("image_url") and session.get("description"):
             await _finalize_and_analyze_report(conv_id, acc_id, data, session)
             return
@@ -378,30 +389,53 @@ async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
         )
         return
 
-    # 3. Captura directa de Imagen y/o Texto (en un solo mensaje o en mensajes separados)
+    # 4. Si todavía estaba en WAITING_CATEGORY y escribió texto normal sin haber elegido del desplegable (ni mandó foto),
+    # recordarle usar el desplegable de anomalías a menos que ya esté describiendo una anomalía con foto.
+    if session["step"] == ConversationStep.WAITING_CATEGORY and not image_url and not session.get("category_id"):
+        if has_incident_keywords and len(text.split()) >= 4:
+            # Escribió una descripción clara de anomalía ("hay peces muertos en la orilla"): asignamos la categoría detectada y pedimos la foto
+            inferred_cat = state_mgr.detect_category_from_text(text)
+            if inferred_cat:
+                session["category_id"] = inferred_cat["id"]
+                session["category_title"] = inferred_cat["title"]
+            session["description"] = text
+            session["step"] = ConversationStep.WAITING_PHOTO
+            await zernio.send_text(
+                conv_id,
+                "Descripcion recibida. Envia la foto de evidencia para analizar el reporte.",
+                account_id=acc_id,
+            )
+            return
+        else:
+            await zernio.send_category_list(conv_id, session["zone_title"] or "Manglar del Atlantico", account_id=acc_id)
+            return
+
+    # 5. Captura de Imagen y/o Texto (en un solo mensaje o en mensajes separados)
     if image_url:
         session["image_url"] = image_url
 
-    if text and not is_totem_greeting:
-        # Si en el texto menciona alguna zona y aún no tenía zona, la guardamos
-        if not session.get("zone_id") and detected_zone:
-            session["zone_id"] = detected_zone["id"]
-            session["zone_title"] = detected_zone["title"]
-            session["zone_coords"] = detected_zone["coords"]
+    if text and not is_totem_or_location_greeting:
+        if not session.get("zone_id") and detected_zone_in_text:
+            session["zone_id"] = detected_zone_in_text["id"]
+            session["zone_title"] = detected_zone_in_text["title"]
+            session["zone_coords"] = detected_zone_in_text["coords"]
 
-        # Guardamos o concatenamos la descripción libre
         if session.get("description") and text not in session["description"]:
             session["description"] = f"{session['description']}. {text}"
         else:
             session["description"] = text
+    elif text and image_url:
+        # Si mandó foto con caption que incluye saludo ("hola estoy en mallorquin y hay espuma"), guardamos el caption como descripción
+        session["description"] = text
 
-    # 4. ¡REGLA CLAVE! Si ya tenemos IMAGEN + TEXTO (hayan llegado juntos o separados), analizar de inmediato sin pedir más nada
+    # 6. Si ya tenemos IMAGEN + TEXTO (hayan llegado juntos o separados), analizar de inmediato sin pedir más nada
     if session.get("image_url") and session.get("description"):
         await _finalize_and_analyze_report(conv_id, acc_id, data, session)
         return
 
-    # 5. Si solo llegó la IMAGEN (sin texto todavía), pedir únicamente la descripción breve
+    # 7. Si solo llegó la IMAGEN (sin texto todavía), pedir únicamente la descripción breve
     if session.get("image_url") and not session.get("description"):
+        session["step"] = ConversationStep.WAITING_DESCRIPTION
         await zernio.send_text(
             conv_id,
             "Foto recibida. Escribe una descripcion breve de lo que ocurre para procesarla.",
@@ -409,8 +443,9 @@ async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
         )
         return
 
-    # 6. Si solo llegó el TEXTO (sin imagen todavía), pedir únicamente la foto
+    # 8. Si solo llegó el TEXTO (después de haber seleccionado la anomalía) pero falta la imagen, pedir únicamente la foto
     if session.get("description") and not session.get("image_url"):
+        session["step"] = ConversationStep.WAITING_PHOTO
         await zernio.send_text(
             conv_id,
             "Descripcion recibida. Envia la foto de evidencia para analizar el reporte.",
@@ -418,7 +453,7 @@ async def process_whatsapp_message(payload: Dict[str, Any]) -> None:
         )
         return
 
-    # 7. Si no hay ni zona ni imagen ni descripción aún, mostrar el desplegable de zonas
+    # 9. Por defecto: si no hay zona, mostrar desplegable de zonas; si ya hay zona, mostrar desplegable de anomalías
     if not session.get("zone_id"):
         await zernio.send_zone_list(conv_id, account_id=acc_id)
     else:
