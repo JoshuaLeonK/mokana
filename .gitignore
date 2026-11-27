@@ -8,11 +8,6 @@ __pycache__/
 venv/
 env/
 
-# Variables de entorno y secretos (CRÍTICO: Nunca subir tokens de Meta/WhatsApp)
-.env
-.env.*
-!.env.example
-
 # Build y salidas
 .next/
 dist/
@@ -32,3 +27,26 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Variables de entorno y secretos (CRÍTICO: Nunca subir tokens de Meta/WhatsApp/Zernio/Gemini)
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Base de datos local de reportes generados en ejecución
+reports_db.json
+**/reports_db.json
+subscribers_db.json
+**/subscribers_db.json
+settings_db.json
+**/settings_db.json
+bot/static/uploads/*
+!bot/static/uploads/.gitkeep
+=======
+# Variables de entorno y secretos (CRÍTICO: Nunca subir tokens de Meta/WhatsApp)
+.env
+.env.*
+!.env.example
