@@ -1,11 +1,13 @@
 import asyncio
 import json
 import logging
+import os
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import quote
 from fastapi import FastAPI, BackgroundTasks, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from config import MANGROVE_ZONES, ALERT_CATEGORIES, PUBLIC_BASE_URL
@@ -36,6 +38,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 zernio = ZernioClient()
 analyst = GeminiAnalyst()

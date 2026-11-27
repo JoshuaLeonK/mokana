@@ -2,7 +2,7 @@ import logging
 from typing import Any, Dict, List
 import httpx
 
-from config import RESEND_API_KEY, RESEND_FROM_EMAIL
+from config import RESEND_API_KEY, RESEND_FROM_EMAIL, PUBLIC_BASE_URL
 
 logger = logging.getLogger("mokana.email")
 
@@ -81,9 +81,10 @@ class EmailNotifier:
         )
 
         image_url = inc.get("image_url") or ""
+        logo_url = f"{PUBLIC_BASE_URL}/static/mokana-logo.jpg"
         image_block = (
-            f"<div style='margin:16px 0;'><p style='margin:0 0 6px 0;font-weight:bold;color:#0f172a;'>📸 Evidencia Fotográfica Verificada por IA:</p>"
-            f"<a href='{image_url}' target='_blank' style='color:#0284c7;'>Ver fotografía en alta resolución</a><br/>"
+            f"<div style='margin:16px 0;'><p style='margin:0 0 6px 0;font-weight:bold;color:#0f172a;'>Evidencia Fotografica Verificada por IA:</p>"
+            f"<a href='{image_url}' target='_blank' style='color:#059669;'>Ver fotografia en alta resolucion</a><br/>"
             f"<img src='{image_url}' alt='Evidencia Manglar' style='max-width:100%;max-height:340px;border-radius:8px;margin-top:8px;border:1px solid #cbd5e1;'/></div>"
             if image_url
             else ""
@@ -94,17 +95,21 @@ class EmailNotifier:
 <html lang="es">
 <head><meta charset="UTF-8"></head>
 <body style="font-family:'Segoe UI',Arial,sans-serif;background-color:#f1f5f9;margin:0;padding:24px;color:#1e293b;">
-  <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08);">
-    <div style="background:#064e3b;color:#ffffff;padding:20px 24px;">
-      <div style="font-size:11px;letter-spacing:1.2px;color:#a7f3d0;font-weight:bold;">{header_subtitle}</div>
-      <h1 style="margin:6px 0 0 0;font-size:22px;">🌿 MOKANÁ — Reporte #{report.get('id')}</h1>
+  <div style="max-width:680px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.1);">
+    <div style="background:#081216;color:#ffffff;padding:24px;text-align:center;border-bottom:4px solid #15803d;">
+      <img src="{logo_url}" alt="Mokana Logo" style="width:130px;height:130px;object-fit:contain;border-radius:50%;margin-bottom:10px;" />
+      <div style="font-size:11px;letter-spacing:1.4px;color:#86efac;font-weight:bold;text-transform:uppercase;">{header_subtitle}</div>
+      <h1 style="margin:6px 0 4px 0;font-size:24px;color:#f8fafc;">Mokana — Reporte #{report.get('id')}</h1>
+      <p style="margin:0;font-size:12.5px;color:#94a3b8;font-style:italic;">
+        Inspirado en la cultura ancestral del pueblo indigena Mokana y el espiritu guardian del manglar del Atlantico
+      </p>
     </div>
 
     <div style="padding:24px;">
       <div style="background:#f8fafc;padding:14px 16px;border-radius:8px;border-left:5px solid {badge_color};margin-bottom:20px;">
-        <div style="font-size:12px;color:#64748b;">PRIORIDAD / SEVERIDAD IA</div>
+        <div style="font-size:12px;color:#64748b;">PRIORIDAD / SEVERIDAD CLASIFICADA POR IA</div>
         <div style="font-size:18px;font-weight:bold;color:{badge_color};">
-          {severity} (Índice de Riesgo: {cra.get('indice_riesgo_ambiental', 78)}/100 • Confianza IA: {cra.get('puntaje_confianza_ia', 90)}% • SLA: {cra.get('sla_tiempo_respuesta_horas', 6)}h)
+          {severity} (Indice de Riesgo: {cra.get('indice_riesgo_ambiental', 78)}/100 • Confianza IA: {cra.get('puntaje_confianza_ia', 90)}% • SLA: {cra.get('sla_tiempo_respuesta_horas', 6)}h)
         </div>
       </div>
 
@@ -112,19 +117,19 @@ class EmailNotifier:
 
       <table style="width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px;">
         <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;width:36%;">📍 Zona / Tótem:</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;width:36%;">Zona / Totem:</td>
           <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;font-weight:bold;">{loc.get('zone_title')} ({loc.get('lat')}, {loc.get('lng')})</td>
         </tr>
         <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;">🚨 Categoría Reportada:</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;">Anomalia Reportada:</td>
           <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">{inc.get('category_title')} → <b>{cra.get('subcategoria_tecnica_cra')}</b></td>
         </tr>
         <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;">🏛️ Dependencia C.R.A.:</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;">Dependencia C.R.A.:</td>
           <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">{cra.get('dependencia_responsable_cra')}</td>
         </tr>
         <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;">💬 Relato del Vigía:</td>
+          <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;color:#64748b;">Descripcion del Vigia:</td>
           <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;font-style:italic;">"{inc.get('citizen_description')}"</td>
         </tr>
       </table>
@@ -132,25 +137,25 @@ class EmailNotifier:
       {image_block}
 
       <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:16px;margin-bottom:16px;">
-        <h3 style="margin:0 0 10px 0;font-size:15px;color:#065f46;">🔬 Clasificación Técnica e Informe Físico-Químico (C.R.A.)</h3>
+        <h3 style="margin:0 0 10px 0;font-size:15px;color:#065f46;">Clasificacion Tecnica e Informe Fisico-Quimico (C.R.A.)</h3>
         <p style="margin:6px 0;font-size:13.5px;"><b>• Coherencia Imagen/Texto:</b> {cra.get('coherencia_foto_descripcion')}</p>
         <p style="margin:6px 0;font-size:13.5px;"><b>• Hallazgo Visual:</b> {cra.get('hallazgo_visual')}</p>
-        <p style="margin:6px 0;font-size:13.5px;"><b>• Hipótesis Ambiental y Química:</b> {cra.get('hipotesis_ambiental_quimica')}</p>
-        <p style="margin:6px 0;font-size:13.5px;"><b>• Parámetros Fisicoquímicos Críticos:</b> {parametros_html}</p>
+        <p style="margin:6px 0;font-size:13.5px;"><b>• Hipotesis Ambiental y Quimica:</b> {cra.get('hipotesis_ambiental_quimica')}</p>
+        <p style="margin:6px 0;font-size:13.5px;"><b>• Parametros Fisicoquimicos Criticos:</b> {parametros_html}</p>
         <p style="margin:6px 0;font-size:13.5px;"><b>• Especies en Riesgo:</b> {especies_html}</p>
         <p style="margin:6px 0;font-size:13.5px;"><b>• Normativa Aplicable:</b> {cra.get('normativa_aplicable')}</p>
-        <p style="margin:10px 0 0 0;font-size:13.5px;background:#dcfce7;padding:8px 10px;border-radius:6px;"><b>✅ Plan de Acción Recomendado C.R.A.:</b> {cra.get('accion_recomendada_cra')}</p>
+        <p style="margin:10px 0 0 0;font-size:13.5px;background:#dcfce7;padding:8px 10px;border-radius:6px;"><b>Plan de Accion Recomendado C.R.A.:</b> {cra.get('accion_recomendada_cra')}</p>
       </div>
 
       <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-bottom:16px;">
-        <h3 style="margin:0 0 8px 0;font-size:15px;color:#1e40af;">📊 Inteligencia de Datos para Academia & Empresas (B2B / ESG)</h3>
+        <h3 style="margin:0 0 8px 0;font-size:15px;color:#1e40af;">Inteligencia de Datos para Academia & Empresas (B2B / ESG)</h3>
         <p style="margin:0 0 10px 0;font-size:13.5px;color:#1e3a8a;">{cra.get('valor_analitico_b2b_academia')}</p>
         <div>{etiquetas_html}</div>
       </div>
 
       <div style="font-size:12px;color:#64748b;text-align:center;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:12px;">
-        Generado automáticamente por <b>MOKANÁ</b> • Red de Tótems Inteligentes y Ciencia Ciudadana del Atlántico<br/>
-        Fecha UTC: {report.get('created_at')}
+        <b>Mokana</b> — Guardianes Ancestrales y Monitoreo en Tiempo Real de los Manglares del Atlantico<br/>
+        Notificacion automatica oficial para: <b>{recipient.get('email', 'C.R.A.')}</b> ({role}) • Fecha UTC: {report.get('created_at')}
       </div>
     </div>
   </div>
@@ -205,6 +210,27 @@ class EmailNotifier:
                                 "html": html_body,
                             },
                         )
+                        # Fallback automático a onboarding@resend.dev si el dominio personalizado aún no está verificado en Resend
+                        if resp.status_code in (400, 403, 422) and "onboarding@resend.dev" not in from_email:
+                            logger.warning(
+                                "Remitente '%s' rechazado por Resend (%s). Reintentando con 'Mokana C.R.A. <onboarding@resend.dev>'...",
+                                from_email,
+                                resp.text,
+                            )
+                            resp = await client.post(
+                                "https://api.resend.com/emails",
+                                headers={
+                                    "Authorization": f"Bearer {api_key}",
+                                    "Content-Type": "application/json",
+                                },
+                                json={
+                                    "from": "Mokana C.R.A. <onboarding@resend.dev>",
+                                    "to": [to_email],
+                                    "subject": subject,
+                                    "html": html_body,
+                                },
+                            )
+
                         if resp.status_code in (200, 201):
                             data = resp.json()
                             resend_id = data.get("id")
